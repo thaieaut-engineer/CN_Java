@@ -121,6 +121,11 @@ public class LoginFrame extends JFrame {
                     dispose(); // Đóng màn hình đăng nhập
                     
                     // TODO: Mở Màn hình chính (MainFrame) tại đây
+                    // Mở MainFrame truyền đối tượng Employee vào
+                    SwingUtilities.invokeLater(() -> {
+                        MainFrame mainFrame = new MainFrame(emp);
+                        mainFrame.setVisible(true);
+                    });
                 } else {
                     JOptionPane.showMessageDialog(LoginFrame.this, 
                         "Tên đăng nhập hoặc mật khẩu không chính xác!", 
