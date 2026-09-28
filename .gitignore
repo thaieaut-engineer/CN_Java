@@ -33,3 +33,6 @@ nbproject/project.properties
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Database Local Credentials
+db.properties

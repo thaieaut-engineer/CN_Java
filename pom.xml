@@ -10,4 +10,12 @@
         <maven.compiler.release>26</maven.compiler.release>
         <exec.mainClass>com.petclinic.pet.clinic.management.PetClinicManagement</exec.mainClass>
     </properties>
+    <dependencies>
+        <!-- SQL Server JDBC Driver -->
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <version>12.6.1.jre11</version>
+        </dependency>
+    </dependencies>
 </project>

@@ -1,0 +1,4 @@
+# File cau hinh mau - Copy file nay thanh db.properties va dien thong tin thuc te cua ban
+db.url=jdbc:sqlserver://localhost:1433;databaseName=PetClinicDB;encrypt=false;trustServerCertificate=true;
+db.user=sa
+db.password=YOUR_PASSWORD_HERE
