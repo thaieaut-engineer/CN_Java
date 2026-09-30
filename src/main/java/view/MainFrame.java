@@ -105,7 +105,7 @@ public class MainFrame extends JFrame {
         contentPanel = new JPanel(cardLayout);
         contentPanel.setBackground(new Color(244, 246, 248));
 
-        contentPanel.add(createDummyPanel("MÀN HÌNH QUẢN LÝ THÚ CƯNG"), "PET");
+        contentPanel.add(new PetPanel(), "PET");
         contentPanel.add(createDummyPanel("MÀN HÌNH QUẢN LÝ KHÁCH HÀNG"), "CUSTOMER");
         contentPanel.add(createDummyPanel("MÀN HÌNH HỒ SƠ KHÁM BỆNH"), "MEDICAL");
         contentPanel.add(createDummyPanel("MÀN HÌNH HÓA ĐƠN & THANH TOÁN"), "INVOICE");
