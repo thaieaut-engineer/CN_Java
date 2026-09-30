@@ -106,7 +106,7 @@ public class MainFrame extends JFrame {
         contentPanel.setBackground(new Color(244, 246, 248));
 
         contentPanel.add(new PetPanel(), "PET");
-        contentPanel.add(createDummyPanel("MÀN HÌNH QUẢN LÝ KHÁCH HÀNG"), "CUSTOMER");
+        contentPanel.add(new CustomerPanel(), "CUSTOMER");
         contentPanel.add(createDummyPanel("MÀN HÌNH HỒ SƠ KHÁM BỆNH"), "MEDICAL");
         contentPanel.add(createDummyPanel("MÀN HÌNH HÓA ĐƠN & THANH TOÁN"), "INVOICE");
         contentPanel.add(createDummyPanel("MÀN HÌNH QUẢN LÝ NHÂN VIÊN"), "EMPLOYEE");
