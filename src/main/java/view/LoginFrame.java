@@ -145,13 +145,13 @@ public class LoginFrame extends JFrame {
     public static void main(String[] args) {
         // Thiết lập Look and Feel giao diện hệ thống
         try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        com.formdev.flatlaf.FlatLightLaf.setup(); // Bật giao diện FlatLaf
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
 
-        SwingUtilities.invokeLater(() -> {
-            new LoginFrame().setVisible(true);
-        });
+    SwingUtilities.invokeLater(() -> {
+        new LoginFrame().setVisible(true);
+    });
     }
 }
