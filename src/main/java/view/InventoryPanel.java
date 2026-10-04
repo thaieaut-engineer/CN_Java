@@ -5,7 +5,9 @@ import model.Employee;
 import util.ExcelExporter;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
-import java.awt.GridLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Path;
@@ -26,10 +28,6 @@ import javax.swing.table.DefaultTableModel;
 
 public class InventoryPanel extends JPanel {
     private final Employee employee;
-    private final JTextField serviceId = new JTextField(8);
-    private final JTextField quantity = new JTextField(8);
-    private final JTextField unitPrice = new JTextField(10);
-    private final JTextField notes = new JTextField(18);
     private final DefaultTableModel model = new DefaultTableModel(
             new String[]{"Loại", "Ngày", "Mã thuốc/dịch vụ", "Tên", "Số lượng", "Đơn giá nhập", "Nhân viên", "Ghi chú"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -42,18 +40,6 @@ public class InventoryPanel extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         JLabel title = new JLabel("QUẢN LÝ TỒN KHO - NHẬP / XUẤT THUỐC");
         title.setFont(title.getFont().deriveFont(20f).deriveFont(java.awt.Font.BOLD));
-        add(title, BorderLayout.NORTH);
-
-        JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
-        form.setBorder(BorderFactory.createTitledBorder("Giao dịch kho"));
-        form.add(new JLabel("Mã thuốc/vắc-xin:"));
-        form.add(serviceId);
-        form.add(new JLabel("Số lượng:"));
-        form.add(quantity);
-        form.add(new JLabel("Đơn giá nhập (nhập kho):"));
-        form.add(unitPrice);
-        form.add(new JLabel("Ghi chú (xuất kho):"));
-        form.add(notes);
         JButton receive = new JButton("Ghi nhận nhập kho");
         JButton issue = new JButton("Ghi nhận xuất kho");
         JButton reload = new JButton("Tải lại");
@@ -63,34 +49,69 @@ public class InventoryPanel extends JPanel {
         buttons.add(issue);
         buttons.add(reload);
         buttons.add(export);
-        JPanel left = new JPanel(new BorderLayout(8, 8));
-        left.setPreferredSize(new java.awt.Dimension(330, 0));
-        left.add(form, BorderLayout.NORTH);
-        left.add(buttons, BorderLayout.CENTER);
-        add(left, BorderLayout.WEST);
+        JPanel header = new JPanel(new BorderLayout(8, 8));
+        header.add(title, BorderLayout.NORTH);
+        header.add(buttons, BorderLayout.SOUTH);
+        add(header, BorderLayout.NORTH);
         table.setAutoCreateRowSorter(true);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        receive.addActionListener(event -> record(true));
-        issue.addActionListener(event -> record(false));
+        receive.addActionListener(event -> openMovementDialog(true));
+        issue.addActionListener(event -> openMovementDialog(false));
         reload.addActionListener(event -> loadData());
         export.addActionListener(event -> export());
         loadData();
     }
 
-    private void record(boolean incoming) {
+    private void openMovementDialog(boolean incoming) {
+        JTextField serviceId = new JTextField(18);
+        JTextField quantity = new JTextField(18);
+        JTextField unitPrice = new JTextField(18);
+        JTextField notes = new JTextField(18);
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.insets = new Insets(6, 6, 6, 6);
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        constraints.weightx = 1;
+        addField(form, constraints, 0, "Mã thuốc/vắc-xin:", serviceId);
+        addField(form, constraints, 1, "Số lượng:", quantity);
+        if (incoming) {
+            addField(form, constraints, 2, "Đơn giá nhập:", unitPrice);
+        } else {
+            addField(form, constraints, 2, "Ghi chú:", notes);
+        }
+        int result = JOptionPane.showConfirmDialog(this, form,
+                incoming ? "Nhập kho" : "Xuất kho",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (result == JOptionPane.OK_OPTION) {
+            record(incoming, serviceId.getText(), quantity.getText(),
+                    unitPrice.getText(), notes.getText());
+        }
+    }
+
+    private void addField(JPanel form, GridBagConstraints constraints, int row,
+            String label, JTextField input) {
+        constraints.gridx = 0;
+        constraints.gridy = row;
+        constraints.weightx = 0;
+        form.add(new JLabel(label), constraints);
+        constraints.gridx = 1;
+        constraints.weightx = 1;
+        form.add(input, constraints);
+    }
+
+    private void record(boolean incoming, String serviceIdText, String quantityText,
+            String unitPriceText, String notesText) {
         try {
-            int id = Integer.parseInt(serviceId.getText().trim());
-            int amount = Integer.parseInt(quantity.getText().trim());
+            int id = Integer.parseInt(serviceIdText.trim());
+            int amount = Integer.parseInt(quantityText.trim());
             if (amount <= 0) throw new IllegalArgumentException("Số lượng phải lớn hơn 0.");
-            BigDecimal price = incoming ? new BigDecimal(unitPrice.getText().trim()) : BigDecimal.ZERO;
+            BigDecimal price = incoming ? new BigDecimal(unitPriceText.trim()) : BigDecimal.ZERO;
             if (incoming && price.signum() < 0) throw new IllegalArgumentException("Đơn giá nhập không được âm.");
             if (incoming) receiveStock(id, amount, price);
-            else issueStock(id, amount, notes.getText().trim());
+            else issueStock(id, amount, notesText.trim());
             JOptionPane.showMessageDialog(this, incoming ? "Đã nhập kho và cập nhật tồn." : "Đã xuất kho và cập nhật tồn.");
-            quantity.setText("");
-            unitPrice.setText("");
-            notes.setText("");
             loadData();
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Mã, số lượng và đơn giá phải đúng định dạng số.", "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);

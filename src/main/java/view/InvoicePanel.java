@@ -5,6 +5,9 @@ import model.Employee;
 import util.ExcelExporter;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -24,9 +27,6 @@ import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
 
 public class InvoicePanel extends JPanel {
-    private final Employee employee;
-    private final JTextField recordId = new JTextField(8);
-    private final JTextField paymentMethod = new JTextField("Tiền mặt", 12);
     private final DefaultTableModel model = new DefaultTableModel(new String[]{
         "Mã HĐ", "Mã phiếu khám", "Thú cưng", "Khách hàng", "Chi nhánh", "Ngày tạo", "Tổng tiền", "Trạng thái", "Thanh toán"
     }, 0) {
@@ -35,22 +35,16 @@ public class InvoicePanel extends JPanel {
     private final JTable table = new JTable(model);
 
     public InvoicePanel(Employee employee) {
-        this.employee = employee;
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         JLabel title = new JLabel("HÓA ĐƠN & THANH TOÁN");
         title.setFont(title.getFont().deriveFont(20f).deriveFont(java.awt.Font.BOLD));
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        controls.add(new JLabel("Mã phiếu khám:"));
-        controls.add(recordId);
-        controls.add(new JLabel("Phương thức:"));
-        controls.add(paymentMethod);
         JButton create = new JButton("Tạo hóa đơn");
         JButton paid = new JButton("Xác nhận đã thanh toán");
         JButton print = new JButton("In hóa đơn");
         JButton reload = new JButton("Tải lại");
         JButton export = new JButton("Xuất Excel");
-        controls.add(create);
         controls.add(paid);
         controls.add(print);
         controls.add(reload);
@@ -59,20 +53,47 @@ public class InvoicePanel extends JPanel {
         header.add(title, BorderLayout.NORTH);
         header.add(controls, BorderLayout.SOUTH);
         add(header, BorderLayout.NORTH);
+        controls.add(create, 0);
         table.setAutoCreateRowSorter(true);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
-        create.addActionListener(event -> createInvoice());
-        paid.addActionListener(event -> markPaid());
+        create.addActionListener(event -> openCreateDialog());
+        paid.addActionListener(event -> openPaymentDialog());
         print.addActionListener(event -> printInvoice());
         reload.addActionListener(event -> loadData());
         export.addActionListener(event -> export());
         loadData();
     }
 
-    private void createInvoice() {
+    private void openCreateDialog() {
+        JTextField recordId = new JTextField(18);
+        JTextField paymentMethod = new JTextField("Tiền mặt", 18);
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.insets = new Insets(6, 6, 6, 6);
+        constraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        form.add(new JLabel("Mã phiếu khám:"), constraints);
+        constraints.gridx = 1;
+        constraints.weightx = 1;
+        form.add(recordId, constraints);
+        constraints.gridx = 0;
+        constraints.gridy = 1;
+        constraints.weightx = 0;
+        form.add(new JLabel("Phương thức thanh toán:"), constraints);
+        constraints.gridx = 1;
+        constraints.weightx = 1;
+        form.add(paymentMethod, constraints);
+        if (JOptionPane.showConfirmDialog(this, form, "Tạo hóa đơn",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
+            createInvoice(recordId.getText(), paymentMethod.getText());
+        }
+    }
+
+    private void createInvoice(String recordId, String paymentMethod) {
         try {
-            int id = Integer.parseInt(recordId.getText().trim());
+            int id = Integer.parseInt(recordId.trim());
+            if (paymentMethod.isBlank()) throw new IllegalArgumentException("Phương thức thanh toán không được để trống.");
             String sql = "INSERT INTO Invoice (record_id, total_amount, status, payment_method) "
                     + "SELECT ?, COALESCE(SUM(d.quantity * d.unit_price), 0), N'Unpaid', ? "
                     + "FROM MedicalDetail d WHERE d.record_id = ? "
@@ -80,7 +101,7 @@ public class InvoicePanel extends JPanel {
             try (Connection connection = DatabaseConnection.getConnection();
                  PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setInt(1, id);
-                statement.setNString(2, paymentMethod.getText().trim());
+                statement.setNString(2, paymentMethod.trim());
                 statement.setInt(3, id);
                 statement.setInt(4, id);
                 int changed = statement.executeUpdate();
@@ -90,21 +111,30 @@ public class InvoicePanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Đã tạo hóa đơn ở trạng thái chưa thanh toán.");
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Mã phiếu khám phải là số nguyên.", "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
+        } catch (IllegalArgumentException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
         } catch (SQLException e) {
             showError(e);
         }
     }
 
-    private void markPaid() {
+    private void openPaymentDialog() {
         int row = selectedModelRow();
         if (row < 0) {
             JOptionPane.showMessageDialog(this, "Hãy chọn hóa đơn cần thanh toán.");
             return;
         }
+        String method = JOptionPane.showInputDialog(this, "Phương thức thanh toán:",
+                "Tiền mặt", JOptionPane.QUESTION_MESSAGE);
+        if (method == null) return;
+        if (method.isBlank()) {
+            JOptionPane.showMessageDialog(this, "Phương thức thanh toán không được để trống.");
+            return;
+        }
         String sql = "UPDATE Invoice SET status=N'Paid', payment_method=? WHERE invoice_id=?";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setNString(1, paymentMethod.getText().trim());
+            statement.setNString(1, method.trim());
             statement.setObject(2, model.getValueAt(row, 0));
             if (statement.executeUpdate() != 1) throw new SQLException("Không tìm thấy hóa đơn.");
             loadData();

@@ -8,7 +8,6 @@ import model.ModuleDefinition.ValueType;
 import util.ExcelExporter;
 import util.PasswordUtil;
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -39,12 +38,12 @@ import javax.swing.JPasswordField;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.RowFilter;
+import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 
 public class CrudPanel extends JPanel {
     private final ModuleDefinition definition;
-    private final Map<Field, JComponent> inputs = new LinkedHashMap<>();
     private final DefaultTableModel tableModel;
     private final JTable table;
 
@@ -57,43 +56,9 @@ public class CrudPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(20f).deriveFont(java.awt.Font.BOLD));
         add(title, BorderLayout.NORTH);
 
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createTitledBorder("Thông tin"));
-        GridBagConstraints constraints = new GridBagConstraints();
-        constraints.insets = new Insets(5, 7, 5, 7);
-        constraints.fill = GridBagConstraints.HORIZONTAL;
-        constraints.weightx = 1;
-        int row = 0;
-        for (Field field : definition.getFields()) {
-            JLabel label = new JLabel(field.getLabel() + (field.isRequired() ? " *" : ""));
-            JComponent input = field.getType() == ValueType.PASSWORD
-                    ? new JPasswordField(18) : new JTextField(18);
-            inputs.put(field, input);
-            constraints.gridx = 0;
-            constraints.gridy = row;
-            constraints.weightx = 0;
-            form.add(label, constraints);
-            constraints.gridx = 1;
-            constraints.weightx = 1;
-            form.add(input, constraints);
-            row++;
-        }
-        JPanel actions = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
         JButton add = new JButton("Thêm");
         JButton update = new JButton("Cập nhật");
         JButton delete = new JButton("Xóa");
-        JButton clear = new JButton("Làm mới");
-        actions.add(add);
-        actions.add(update);
-        actions.add(delete);
-        actions.add(clear);
-        constraints.gridx = 0;
-        constraints.gridy = row;
-        constraints.gridwidth = 2;
-        form.add(actions, constraints);
-        JPanel left = new JPanel(new BorderLayout(6, 6));
-        left.setPreferredSize(new Dimension(340, 0));
-        left.add(new JScrollPane(form), BorderLayout.CENTER);
 
         List<String> headers = new ArrayList<>();
         for (Column column : definition.getColumns()) {
@@ -109,11 +74,6 @@ public class CrudPanel extends JPanel {
         table.setAutoCreateRowSorter(true);
         TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
         table.setRowSorter(sorter);
-        table.getSelectionModel().addListSelectionListener(event -> {
-            if (!event.getValueIsAdjusting()) {
-                selectRow();
-            }
-        });
         JTextField search = new JTextField(18);
         search.putClientProperty("JTextField.placeholderText", "Tìm trong danh sách...");
         search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -128,21 +88,29 @@ public class CrudPanel extends JPanel {
         JButton reload = new JButton("Tải lại");
         JButton export = new JButton("Xuất Excel");
         JPanel tableActions = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        tableActions.add(add);
+        tableActions.add(update);
+        tableActions.add(delete);
         tableActions.add(search);
         tableActions.add(reload);
         tableActions.add(export);
-        JPanel right = new JPanel(new BorderLayout(6, 6));
-        right.add(tableActions, BorderLayout.NORTH);
-        right.add(new JScrollPane(table), BorderLayout.CENTER);
-        add(left, BorderLayout.WEST);
-        add(right, BorderLayout.CENTER);
-
-        add.addActionListener(event -> save(true));
-        update.addActionListener(event -> save(false));
+        JPanel body = new JPanel(new BorderLayout(6, 6));
+        body.add(tableActions, BorderLayout.NORTH);
+        body.add(new JScrollPane(table), BorderLayout.CENTER);
+        add(body, BorderLayout.CENTER);
+        add.addActionListener(event -> showEditor(true));
+        update.addActionListener(event -> showEditor(false));
         delete.addActionListener(event -> deleteSelected());
-        clear.addActionListener(event -> clearForm());
         reload.addActionListener(event -> loadData());
         export.addActionListener(event -> export());
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent event) {
+                if (event.getClickCount() == 2 && table.getSelectedRow() >= 0) {
+                    showEditor(false);
+                }
+            }
+        });
         loadData();
     }
 
@@ -167,26 +135,6 @@ public class CrudPanel extends JPanel {
         }
     }
 
-    private void selectRow() {
-        int viewRow = table.getSelectedRow();
-        if (viewRow < 0) {
-            return;
-        }
-        int row = table.convertRowIndexToModel(viewRow);
-        for (Field field : definition.getFields()) {
-            JComponent input = inputs.get(field);
-            if (field.getType() == ValueType.PASSWORD) {
-                ((JPasswordField) input).setText("");
-                continue;
-            }
-            int column = columnIndex(field.getName());
-            if (column >= 0) {
-                Object value = tableModel.getValueAt(row, column);
-                ((JTextField) input).setText(value == null ? "" : value.toString());
-            }
-        }
-    }
-
     private int columnIndex(String name) {
         for (int index = 0; index < definition.getColumns().size(); index++) {
             if (definition.getColumns().get(index).getName().equals(name)) {
@@ -196,49 +144,105 @@ public class CrudPanel extends JPanel {
         return -1;
     }
 
-    private void save(boolean insert) {
+    private void showEditor(boolean insert) {
         int row = table.getSelectedRow();
         if (!insert && row < 0) {
             JOptionPane.showMessageDialog(this, "Hãy chọn bản ghi cần cập nhật.");
             return;
         }
+        Map<Field, JComponent> editorInputs = new LinkedHashMap<>();
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.insets = new Insets(6, 8, 6, 8);
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        int modelRow = insert ? -1 : table.convertRowIndexToModel(row);
+        for (int index = 0; index < definition.getFields().size(); index++) {
+            Field field = definition.getFields().get(index);
+            JLabel label = new JLabel(field.getLabel() + (field.isRequired() ? " *" : ""));
+            JComponent input = field.getType() == ValueType.PASSWORD
+                    ? new JPasswordField(20) : new JTextField(20);
+            editorInputs.put(field, input);
+            if (!insert && field.getType() != ValueType.PASSWORD) {
+                int column = columnIndex(field.getName());
+                if (column >= 0) {
+                    Object value = tableModel.getValueAt(modelRow, column);
+                    ((JTextField) input).setText(value == null ? "" : value.toString());
+                }
+            }
+            constraints.gridx = 0;
+            constraints.gridy = index;
+            constraints.weightx = 0;
+            form.add(label, constraints);
+            constraints.gridx = 1;
+            constraints.weightx = 1;
+            form.add(input, constraints);
+        }
+        javax.swing.JDialog dialog = new javax.swing.JDialog(
+                SwingUtilities.getWindowAncestor(this),
+                insert ? "Thêm " + definition.getTitle() : "Cập nhật " + definition.getTitle(),
+                java.awt.Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setLayout(new BorderLayout(8, 8));
+        dialog.add(new JScrollPane(form), BorderLayout.CENTER);
+        JButton save = new JButton(insert ? "Thêm" : "Lưu thay đổi");
+        JButton cancel = new JButton("Hủy");
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        actions.add(cancel);
+        actions.add(save);
+        dialog.add(actions, BorderLayout.SOUTH);
+        save.addActionListener(event -> {
+            if (save(insert, editorInputs, modelRow)) {
+                dialog.dispose();
+            }
+        });
+        cancel.addActionListener(event -> dialog.dispose());
+        dialog.setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setSize(500, Math.min(620, 180 + definition.getFields().size() * 48));
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private boolean save(boolean insert, Map<Field, JComponent> editorInputs, int modelRow) {
         try {
-            Map<Field, Object> values = readValues(insert);
+            Map<Field, Object> values = readValues(insert, editorInputs);
             if (values.isEmpty()) {
                 throw new IllegalArgumentException("Hãy nhập ít nhất một trường dữ liệu.");
             }
             if (insert) {
                 insert(values);
             } else {
-                int modelRow = table.convertRowIndexToModel(row);
                 Object id = tableModel.getValueAt(modelRow, 0);
                 update(id, values);
             }
-            clearForm();
             loadData();
-            JOptionPane.showMessageDialog(this, insert ? "Đã thêm bản ghi." : "Đã cập nhật bản ghi.");
+            return true;
         } catch (IllegalArgumentException e) {
             JOptionPane.showMessageDialog(this, e.getMessage(), "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
         } catch (SQLException e) {
             showError("Không thể lưu dữ liệu", e);
         }
+        return false;
     }
 
-    private Map<Field, Object> readValues(boolean insert) {
+    private Map<Field, Object> readValues(boolean insert, Map<Field, JComponent> editorInputs) {
         Map<Field, Object> values = new LinkedHashMap<>();
         for (Field field : definition.getFields()) {
             String value;
+            JComponent input = editorInputs.get(field);
             if (field.getType() == ValueType.PASSWORD) {
-                value = new String(((JPasswordField) inputs.get(field)).getPassword());
+                value = new String(((JPasswordField) input).getPassword());
                 if (value.isBlank() && !insert) {
                     continue;
                 }
             } else {
-                value = ((JTextField) inputs.get(field)).getText().trim();
+                value = ((JTextField) input).getText().trim();
             }
             if (value.isBlank()) {
                 if (field.isRequired()) {
                     throw new IllegalArgumentException("Vui lòng nhập " + field.getLabel() + ".");
+                }
+                if (field.getType() == ValueType.TEXT) {
+                    values.put(field, "");
                 }
                 continue;
             }
@@ -342,22 +346,10 @@ public class CrudPanel extends JPanel {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, id);
             statement.executeUpdate();
-            clearForm();
             loadData();
         } catch (SQLException e) {
             showError("Không thể xóa bản ghi", e);
         }
-    }
-
-    private void clearForm() {
-        for (JComponent input : inputs.values()) {
-            if (input instanceof JPasswordField) {
-                ((JPasswordField) input).setText("");
-            } else {
-                ((JTextField) input).setText("");
-            }
-        }
-        table.clearSelection();
     }
 
     private void export() {
