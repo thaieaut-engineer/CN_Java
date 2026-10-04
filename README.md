@@ -185,6 +185,7 @@ Trước khi chạy ứng dụng, cần chuẩn bị:
 ## Chức năng đã triển khai
 
 - Đăng nhập, đăng xuất và phân quyền theo `Admin`, `BacSi`, `NhanVien`; mật khẩu mới được băm bằng PBKDF2. Tài khoản mẫu có mật khẩu cũ được nâng cấp sau lần đăng nhập thành công.
+- Dashboard mặc định cho Admin: số chi nhánh, nhân viên, khách hàng, thú cưng, lịch hẹn hôm nay, doanh thu tháng, hóa đơn chưa trả, cảnh báo tồn thấp, lịch hẹn sắp tới và biểu đồ doanh thu 6 tháng.
 - Quản lý chi nhánh, nhân viên/tài khoản, khách hàng, thú cưng, lịch hẹn, phiếu khám, chi tiết kê đơn, thuốc và dịch vụ.
 - Theo dõi tiêm phòng, ngày nhắc tiêm/tái khám và tra cứu lịch sử khám toàn chuỗi.
 - Nhập/xuất kho theo giao dịch, cập nhật tồn kho và chặn xuất quá số lượng hiện có.

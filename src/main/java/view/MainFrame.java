@@ -70,6 +70,7 @@ public class MainFrame extends JFrame {
         menuContainer.setLayout(new BoxLayout(menuContainer, BoxLayout.Y_AXIS));
         menuContainer.setBackground(new Color(33, 43, 54));
         menuContainer.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        addMenu("Dashboard", "DASHBOARD", () -> new DashboardPanel(currentEmployee), Set.of("admin"));
         addMenu("Chi nhánh", "BRANCH", createBranchDefinition(), Set.of("admin"));
         addMenu("Nhân viên & tài khoản", "EMPLOYEE", createEmployeeDefinition(), Set.of("admin"));
         addMenu("Khách hàng", "CUSTOMER", createCustomerDefinition(), Set.of("admin", "bác sĩ", "bacsi", "nhân viên", "nhanvien"));
