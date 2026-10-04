@@ -4,6 +4,10 @@
 
 package com.petclinic.pet.clinic.management;
 
+import com.formdev.flatlaf.FlatLightLaf;
+import javax.swing.SwingUtilities;
+import view.LoginFrame;
+
 /**
  *
  * @author Administrator
@@ -11,6 +15,7 @@ package com.petclinic.pet.clinic.management;
 public class PetClinicManagement {
 
     public static void main(String[] args) {
-        System.out.println("Hello World!");
+        FlatLightLaf.setup();
+        SwingUtilities.invokeLater(() -> new LoginFrame().setVisible(true));
     }
 }

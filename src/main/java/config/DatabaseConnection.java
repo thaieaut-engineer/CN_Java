@@ -4,46 +4,36 @@
  */
 package config;
 
-import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Properties;
 
 public class DatabaseConnection {
-    private static String url;
-    private static String user;
-    private static String password;
-
-    static {
-        try (InputStream input = new FileInputStream("db.properties")) {
-            Properties prop = new Properties();
-            prop.load(input);
-
-            url = prop.getProperty("db.url");
-            user = prop.getProperty("db.user");
-            password = prop.getProperty("db.password");
-
-            Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
-        } catch (Exception e) {
-            System.err.println("Lỗi đọc file cấu hình db.properties hoặc nạp Driver!");
-            e.printStackTrace();
-        }
-    }
-
     public static Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(url, user, password);
-    }
-
-    public static void main(String[] args) {
-        try (Connection conn = getConnection()) {
-            if (conn != null) {
-                System.out.println("-> Kết nối SQL Server qua file cấu hình thành công!");
-            }
-        } catch (SQLException e) {
-            System.err.println("-> Kết nối thất bại!");
-            e.printStackTrace();
+        Properties properties = new Properties();
+        Path configPath = Path.of("db.properties");
+        try (InputStream input = Files.newInputStream(configPath)) {
+            properties.load(input);
+        } catch (IOException e) {
+            throw new SQLException("Không thể đọc db.properties. Hãy tạo file từ db.properties.example.", e);
         }
+
+        String url = properties.getProperty("db.url");
+        String user = properties.getProperty("db.user");
+        String password = properties.getProperty("db.password");
+        if (url == null || url.isBlank() || user == null || password == null) {
+            throw new SQLException("Thiếu db.url, db.user hoặc db.password trong db.properties.");
+        }
+        try {
+            Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("Không tìm thấy SQL Server JDBC Driver.", e);
+        }
+        return DriverManager.getConnection(url, user, password);
     }
 }

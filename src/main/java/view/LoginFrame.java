@@ -114,33 +114,44 @@ public class LoginFrame extends JFrame {
             try {
                 Employee emp = get();
                 if (emp != null) {
-                    JOptionPane.showMessageDialog(LoginFrame.this, 
-                        "Đăng nhập thành công!\nXin chào: " + emp.getFullName() + " (" + emp.getRole() + ")", 
-                        "Thông báo", JOptionPane.INFORMATION_MESSAGE);
-                    
-                    dispose(); // Đóng màn hình đăng nhập
-                    
-                    // TODO: Mở Màn hình chính (MainFrame) tại đây
-                    // Mở MainFrame truyền đối tượng Employee vào
-                    SwingUtilities.invokeLater(() -> {
+                    if (!hasSupportedRole(emp.getRole())) {
+                        JOptionPane.showMessageDialog(LoginFrame.this,
+                            "Tài khoản chưa có vai trò được hỗ trợ. Vui lòng liên hệ quản trị viên.",
+                            "Không đủ quyền", JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+                    try {
                         MainFrame mainFrame = new MainFrame(emp);
                         mainFrame.setVisible(true);
-                    });
+                        dispose();
+                    } catch (RuntimeException startupError) {
+                        JOptionPane.showMessageDialog(LoginFrame.this,
+                            "Đăng nhập đúng nhưng không thể mở màn hình chính:\n" + startupError.getMessage(),
+                            "Lỗi khởi động", JOptionPane.ERROR_MESSAGE);
+                    }
                 } else {
                     JOptionPane.showMessageDialog(LoginFrame.this, 
                         "Tên đăng nhập hoặc mật khẩu không chính xác!", 
                         "Lỗi đăng nhập", JOptionPane.ERROR_MESSAGE);
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                Throwable cause = e.getCause() == null ? e : e.getCause();
                 JOptionPane.showMessageDialog(LoginFrame.this, 
-                    "Lỗi kết nối CSDL!", "Lỗi", JOptionPane.ERROR_MESSAGE);
+                    "Không thể đăng nhập: " + cause.getMessage(),
+                    "Lỗi", JOptionPane.ERROR_MESSAGE);
             }
         }
     };
 
     worker.execute();
 }
+
+    private boolean hasSupportedRole(String role) {
+        if (role == null) return false;
+        String normalized = role.trim().toLowerCase(java.util.Locale.ROOT);
+        return normalized.equals("admin") || normalized.equals("bacsi") || normalized.equals("bác sĩ")
+                || normalized.equals("nhanvien") || normalized.equals("nhân viên");
+    }
 
     public static void main(String[] args) {
         // Thiết lập Look and Feel giao diện hệ thống
