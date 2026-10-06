@@ -9,7 +9,10 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GridLayout;
+import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +30,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import java.util.function.Supplier;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 public class MainFrame extends JFrame {
     private final Employee currentEmployee;
@@ -50,26 +55,61 @@ public class MainFrame extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
+        getContentPane().setBackground(UiTheme.PAGE);
 
         JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setBackground(new Color(33, 43, 54));
-        sidebar.setPreferredSize(new Dimension(245, 0));
+        sidebar.setBackground(UiTheme.NAV);
+        sidebar.setPreferredSize(new Dimension(258, 0));
         JPanel brand = new JPanel(new BorderLayout());
         brand.setOpaque(false);
-        brand.setBorder(BorderFactory.createEmptyBorder(18, 12, 18, 12));
-        JLabel name = new JLabel("PET CLINIC", SwingConstants.CENTER);
-        name.setFont(new Font("Segoe UI", Font.BOLD, 23));
+        brand.setBorder(BorderFactory.createEmptyBorder(22, 18, 18, 14));
+        JPanel brandIdentity = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        brandIdentity.setOpaque(false);
+        JLabel mark = new JLabel(new ClinicIcon("pet", Color.WHITE, 24));
+        JPanel markBox = new JPanel(new BorderLayout());
+        markBox.setBackground(UiTheme.BLUE);
+        markBox.setBorder(BorderFactory.createEmptyBorder(9, 9, 9, 9));
+        markBox.add(mark);
+        JLabel name = new JLabel("PET CLINIC");
+        name.setFont(new Font("Segoe UI", Font.BOLD, 20));
         name.setForeground(Color.WHITE);
-        JLabel user = new JLabel("<html><center>" + escape(currentEmployee.getFullName())
-                + "<br>" + escape(currentEmployee.getRole()) + "</center></html>", SwingConstants.CENTER);
-        user.setForeground(new Color(190, 202, 214));
-        brand.add(name, BorderLayout.NORTH);
-        brand.add(user, BorderLayout.SOUTH);
+        JLabel subName = new JLabel("CHĂM SÓC THÚ CƯNG");
+        subName.setFont(new Font("Segoe UI", Font.PLAIN, 9));
+        subName.setForeground(new Color(159, 183, 219));
+        JPanel brandText = new JPanel(new GridLayout(0, 1, 0, 2));
+        brandText.setOpaque(false);
+        brandText.add(name);
+        brandText.add(subName);
+        brandIdentity.add(markBox);
+        brandIdentity.add(brandText);
+        brand.add(brandIdentity, BorderLayout.NORTH);
+        JPanel userCard = new JPanel(new BorderLayout(10, 0));
+        userCard.setOpaque(false);
+        userCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(48, 73, 117)),
+                BorderFactory.createEmptyBorder(14, 2, 2, 2)));
+        JLabel avatar = new JLabel(new ClinicIcon("employee", new Color(191, 219, 254), 22));
+        avatar.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        JPanel avatarBox = new JPanel(new BorderLayout());
+        avatarBox.setBackground(new Color(30, 62, 115));
+        avatarBox.add(avatar);
+        JLabel userName = new JLabel(escape(currentEmployee.getFullName()));
+        userName.setForeground(Color.WHITE);
+        userName.setFont(userName.getFont().deriveFont(Font.BOLD, 12f));
+        JLabel userRole = new JLabel(escape(currentEmployee.getRole()));
+        userRole.setForeground(new Color(159, 183, 219));
+        JPanel userText = new JPanel(new GridLayout(0, 1, 0, 4));
+        userText.setOpaque(false);
+        userText.add(userName);
+        userText.add(userRole);
+        userCard.add(avatarBox, BorderLayout.WEST);
+        userCard.add(userText, BorderLayout.CENTER);
+        brand.add(userCard, BorderLayout.SOUTH);
         sidebar.add(brand, BorderLayout.NORTH);
 
         menuContainer.setLayout(new BoxLayout(menuContainer, BoxLayout.Y_AXIS));
-        menuContainer.setBackground(new Color(33, 43, 54));
-        menuContainer.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        menuContainer.setBackground(UiTheme.NAV);
+        menuContainer.setBorder(BorderFactory.createEmptyBorder(8, 10, 12, 10));
         addMenu("Dashboard", "DASHBOARD", () -> new DashboardPanel(currentEmployee), Set.of("admin"));
         addMenu("Chi nhánh", "BRANCH", createBranchDefinition(), Set.of("admin"));
         addMenu("Nhân viên & tài khoản", "EMPLOYEE", createEmployeeDefinition(), Set.of("admin"));
@@ -88,19 +128,30 @@ public class MainFrame extends JFrame {
                 Set.of("admin", "bác sĩ", "bacsi", "nhân viên", "nhanvien"));
         addMenu("Lịch sử khám toàn chuỗi", "HISTORY", HistoryPanel::new,
                 Set.of("admin", "bác sĩ", "bacsi", "nhân viên", "nhanvien"));
-        sidebar.add(new JScrollPane(menuContainer), BorderLayout.CENTER);
+        JScrollPane navigationScroll = new JScrollPane(menuContainer);
+        navigationScroll.setBorder(BorderFactory.createEmptyBorder());
+        navigationScroll.setOpaque(false);
+        navigationScroll.getViewport().setOpaque(false);
+        sidebar.add(navigationScroll, BorderLayout.CENTER);
         JButton logout = new JButton("Đăng xuất");
-        logout.setForeground(Color.WHITE);
-        logout.setBackground(new Color(198, 76, 65));
+        logout.setIcon(new ClinicIcon("logout", new Color(254, 202, 202), 18));
+        logout.setHorizontalAlignment(SwingConstants.LEFT);
+        logout.setIconTextGap(12);
+        logout.setMargin(new Insets(10, 12, 10, 12));
+        logout.setForeground(new Color(254, 226, 226));
+        logout.setBackground(new Color(127, 45, 58));
+        logout.setBorderPainted(false);
+        logout.setFocusPainted(false);
+        logout.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
         logout.addActionListener(event -> handleLogout());
         JPanel bottom = new JPanel(new BorderLayout());
         bottom.setOpaque(false);
-        bottom.setBorder(BorderFactory.createEmptyBorder(10, 10, 14, 10));
+        bottom.setBorder(BorderFactory.createEmptyBorder(10, 14, 16, 14));
         bottom.add(logout);
         sidebar.add(bottom, BorderLayout.SOUTH);
         add(sidebar, BorderLayout.WEST);
 
-        contentPanel.setBackground(new Color(244, 246, 248));
+        contentPanel.setBackground(UiTheme.PAGE);
         add(contentPanel, BorderLayout.CENTER);
         if (!menuButtons.isEmpty()) {
             switchTab(menuButtons.get(0), (String) menuButtons.get(0).getClientProperty("card"));
@@ -120,12 +171,34 @@ public class MainFrame extends JFrame {
         panelSuppliers.put(card, panelSupplier);
         JButton button = new JButton(label);
         button.setHorizontalAlignment(SwingConstants.LEFT);
-        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
-        button.setForeground(new Color(205, 214, 222));
-        button.setBackground(new Color(33, 43, 54));
+        button.setIcon(new ClinicIcon(id.toLowerCase(Locale.ROOT), new Color(159, 183, 219), 18));
+        button.putClientProperty("iconType", id.toLowerCase(Locale.ROOT));
+        button.setIconTextGap(13);
+        button.setMargin(new Insets(10, 12, 10, 12));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        button.setForeground(new Color(205, 218, 238));
+        button.setBackground(UiTheme.NAV);
         button.setBorderPainted(false);
         button.setFocusPainted(false);
+        button.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
         button.putClientProperty("card", card);
+        button.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent event) {
+                if (button != selectedButton) {
+                    button.setBackground(UiTheme.NAV_LIGHT);
+                    button.setForeground(Color.WHITE);
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent event) {
+                if (button != selectedButton) {
+                    button.setBackground(UiTheme.NAV);
+                    button.setForeground(new Color(205, 218, 238));
+                }
+            }
+        });
         button.addActionListener(event -> switchTab(button, card));
         menuButtons.add(button);
         menuContainer.add(button);
@@ -143,14 +216,17 @@ public class MainFrame extends JFrame {
             loadedCards.add(card);
         }
         if (selectedButton != null) {
-            selectedButton.setBackground(new Color(33, 43, 54));
-            selectedButton.setForeground(new Color(205, 214, 222));
+            selectedButton.setBackground(UiTheme.NAV);
+            selectedButton.setForeground(new Color(205, 218, 238));
             selectedButton.setFont(selectedButton.getFont().deriveFont(Font.PLAIN));
+            selectedButton.setIcon(new ClinicIcon((String) selectedButton.getClientProperty("iconType"),
+                    new Color(159, 183, 219), 18));
         }
         selectedButton = button;
-        button.setBackground(new Color(24, 144, 255));
+        button.setBackground(UiTheme.BLUE);
         button.setForeground(Color.WHITE);
         button.setFont(button.getFont().deriveFont(Font.BOLD));
+        button.setIcon(new ClinicIcon((String) button.getClientProperty("iconType"), Color.WHITE, 18));
         ((CardLayout) contentPanel.getLayout()).show(contentPanel, card);
     }
 

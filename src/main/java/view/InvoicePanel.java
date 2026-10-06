@@ -4,6 +4,7 @@ import config.DatabaseConnection;
 import model.Employee;
 import util.ExcelExporter;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -37,14 +38,29 @@ public class InvoicePanel extends JPanel {
     public InvoicePanel(Employee employee) {
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
-        JLabel title = new JLabel("HÓA ĐƠN & THANH TOÁN");
+        UiTheme.stylePage(this);
+        JLabel title = new JLabel("Hóa đơn & thanh toán");
         title.setFont(title.getFont().deriveFont(20f).deriveFont(java.awt.Font.BOLD));
+        title.setIcon(new ClinicIcon("invoice", UiTheme.BLUE, 22));
+        title.setIconTextGap(10);
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        controls.setOpaque(false);
         JButton create = new JButton("Tạo hóa đơn");
         JButton paid = new JButton("Xác nhận đã thanh toán");
         JButton print = new JButton("In hóa đơn");
         JButton reload = new JButton("Tải lại");
         JButton export = new JButton("Xuất Excel");
+        UiTheme.stylePrimary(create);
+        UiTheme.styleSecondary(paid);
+        UiTheme.styleSecondary(print);
+        UiTheme.styleSecondary(reload);
+        UiTheme.styleSecondary(export);
+        create.setIcon(new ClinicIcon("invoice", Color.WHITE, 15));
+        paid.setIcon(new ClinicIcon("medical", UiTheme.BLUE, 15));
+        print.setIcon(new ClinicIcon("document", UiTheme.BLUE, 15));
+        reload.setIcon(new ClinicIcon("history", UiTheme.BLUE, 15));
+        export.setIcon(new ClinicIcon("report", UiTheme.BLUE, 15));
+        controls.add(create);
         controls.add(paid);
         controls.add(print);
         controls.add(reload);
@@ -53,8 +69,8 @@ public class InvoicePanel extends JPanel {
         header.add(title, BorderLayout.NORTH);
         header.add(controls, BorderLayout.SOUTH);
         add(header, BorderLayout.NORTH);
-        controls.add(create, 0);
         table.setAutoCreateRowSorter(true);
+        UiTheme.styleTable(table);
         add(new JScrollPane(table), BorderLayout.CENTER);
 
         create.addActionListener(event -> openCreateDialog());

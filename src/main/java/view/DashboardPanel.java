@@ -11,6 +11,7 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.RenderingHints;
+import java.awt.GradientPaint;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -49,18 +50,27 @@ public class DashboardPanel extends JPanel {
         this.employee = employee;
         setLayout(new BorderLayout(16, 16));
         setBorder(BorderFactory.createEmptyBorder(20, 22, 20, 22));
+        UiTheme.stylePage(this);
 
-        JPanel heading = new JPanel(new BorderLayout(12, 8));
-        heading.setOpaque(false);
+        HeroPanel heading = new HeroPanel();
+        heading.setLayout(new BorderLayout(12, 8));
+        heading.setBorder(BorderFactory.createEmptyBorder(19, 24, 19, 22));
         JLabel title = new JLabel("Tổng quan hệ thống");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 26f));
-        JLabel greeting = new JLabel("Xin chào, " + employee.getFullName() + "  |  " + employee.getRole());
-        greeting.setForeground(new Color(100, 116, 139));
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 25f));
+        title.setForeground(Color.WHITE);
+        JLabel greeting = new JLabel("Xin chào, " + employee.getFullName() + "  •  Chúc bạn một ngày làm việc hiệu quả");
+        greeting.setForeground(new Color(219, 234, 254));
+        greeting.setFont(greeting.getFont().deriveFont(13f));
         JPanel titleBlock = new JPanel(new GridLayout(0, 1, 0, 4));
         titleBlock.setOpaque(false);
         titleBlock.add(title);
         titleBlock.add(greeting);
-        JButton refresh = new JButton("Làm mới dữ liệu");
+        JButton refresh = new JButton("Làm mới");
+        refresh.setIcon(new ClinicIcon("history", UiTheme.BLUE, 16));
+        refresh.setBackground(Color.WHITE);
+        refresh.setForeground(UiTheme.BLUE_DARK);
+        refresh.setFocusPainted(false);
+        refresh.putClientProperty("JButton.buttonType", "roundRect");
         refresh.addActionListener(event -> loadDashboard());
         heading.add(titleBlock, BorderLayout.WEST);
         heading.add(refresh, BorderLayout.EAST);
@@ -68,35 +78,35 @@ public class DashboardPanel extends JPanel {
 
         JPanel metrics = new JPanel(new GridLayout(2, 4, 12, 12));
         metrics.setOpaque(false);
-        metrics.add(metricCard("Chi nhánh", branchesValue, new Color(59, 130, 246)));
-        metrics.add(metricCard("Nhân viên", employeesValue, new Color(139, 92, 246)));
-        metrics.add(metricCard("Khách hàng", customersValue, new Color(16, 185, 129)));
-        metrics.add(metricCard("Thú cưng", petsValue, new Color(245, 158, 11)));
-        metrics.add(metricCard("Lịch hẹn hôm nay", appointmentsValue, new Color(6, 182, 212)));
-        metrics.add(metricCard("Doanh thu tháng này", revenueValue, new Color(34, 197, 94)));
-        metrics.add(metricCard("Hóa đơn chưa trả", unpaidValue, new Color(239, 68, 68)));
-        metrics.add(metricCard("Thuốc/vắc-xin sắp hết", lowStockValue, new Color(249, 115, 22)));
+        metrics.add(metricCard("Chi nhánh", branchesValue, "branch", "Đang hoạt động", new Color(37, 99, 235)));
+        metrics.add(metricCard("Nhân viên", employeesValue, "employee", "Tài khoản toàn chuỗi", new Color(79, 70, 229)));
+        metrics.add(metricCard("Khách hàng", customersValue, "customer", "Hồ sơ khách hàng", new Color(8, 145, 178)));
+        metrics.add(metricCard("Thú cưng", petsValue, "pet", "Được đăng ký khám", new Color(13, 148, 136)));
+        metrics.add(metricCard("Lịch hẹn hôm nay", appointmentsValue, "appointment", "Chưa hủy", new Color(37, 99, 235)));
+        metrics.add(metricCard("Doanh thu tháng này", revenueValue, "report", "Hóa đơn đã thanh toán", new Color(29, 78, 216)));
+        metrics.add(metricCard("Hóa đơn chưa trả", unpaidValue, "invoice", "Tổng số tiền còn nợ", new Color(79, 70, 229)));
+        metrics.add(metricCard("Sắp hết hàng", lowStockValue, "inventory", "Thuốc / vắc-xin còn ≤ 5", new Color(8, 145, 178)));
 
         JTable appointments = new JTable(appointmentModel);
-        appointments.setRowHeight(28);
+        UiTheme.styleTable(appointments);
         appointments.setAutoCreateRowSorter(true);
         JPanel appointmentsPanel = new JPanel(new BorderLayout(8, 8));
-        appointmentsPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(226, 232, 240)),
-                BorderFactory.createEmptyBorder(12, 12, 12, 12)));
+        UiTheme.styleSurface(appointmentsPanel);
         JLabel appointmentsTitle = new JLabel("Lịch hẹn sắp tới");
         appointmentsTitle.setFont(appointmentsTitle.getFont().deriveFont(Font.BOLD, 16f));
+        appointmentsTitle.setIcon(new ClinicIcon("appointment", UiTheme.BLUE, 19));
+        appointmentsTitle.setIconTextGap(9);
         appointmentsPanel.add(appointmentsTitle, BorderLayout.NORTH);
         appointmentsPanel.add(new JScrollPane(appointments), BorderLayout.CENTER);
 
         JPanel chartPanel = new JPanel(new BorderLayout(8, 8));
-        chartPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(226, 232, 240)),
-                BorderFactory.createEmptyBorder(12, 12, 12, 12)));
+        UiTheme.styleSurface(chartPanel);
         JLabel chartTitle = new JLabel("Doanh thu 6 tháng gần nhất");
         chartTitle.setFont(chartTitle.getFont().deriveFont(Font.BOLD, 16f));
+        chartTitle.setIcon(new ClinicIcon("report", UiTheme.BLUE, 19));
+        chartTitle.setIconTextGap(9);
         chartPanel.add(chartTitle, BorderLayout.NORTH);
-        revenueChart.setPreferredSize(new Dimension(480, 300));
+        revenueChart.setPreferredSize(new Dimension(480, 270));
         chartPanel.add(revenueChart, BorderLayout.CENTER);
 
         JPanel content = new JPanel(new BorderLayout(14, 14));
@@ -113,20 +123,35 @@ public class DashboardPanel extends JPanel {
         loadDashboard();
     }
 
-    private JPanel metricCard(String label, JLabel value, Color accent) {
-        JPanel card = new JPanel(new BorderLayout(4, 10));
+    private JPanel metricCard(String label, JLabel value, String icon, String hint, Color accent) {
+        JPanel card = new JPanel(new BorderLayout(10, 4));
         card.setBackground(Color.WHITE);
         card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 4, 0, 0, accent),
-                BorderFactory.createCompoundBorder(
-                        BorderFactory.createLineBorder(new Color(226, 232, 240)),
-                        BorderFactory.createEmptyBorder(12, 14, 12, 14))));
+                BorderFactory.createLineBorder(UiTheme.BORDER),
+                BorderFactory.createEmptyBorder(12, 14, 10, 14)));
         JLabel caption = new JLabel(label);
-        caption.setForeground(new Color(100, 116, 139));
-        value.setFont(value.getFont().deriveFont(Font.BOLD, 24f));
-        value.setForeground(new Color(30, 41, 59));
-        card.add(caption, BorderLayout.NORTH);
-        card.add(value, BorderLayout.CENTER);
+        caption.setForeground(UiTheme.MUTED);
+        caption.setFont(caption.getFont().deriveFont(Font.PLAIN, 12f));
+        value.setFont(value.getFont().deriveFont(Font.BOLD, 22f));
+        value.setForeground(UiTheme.TEXT);
+        JLabel symbol = new JLabel(new ClinicIcon(icon, accent, 21));
+        JPanel iconBadge = new JPanel(new BorderLayout());
+        iconBadge.setBackground(new Color(239, 246, 255));
+        iconBadge.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        iconBadge.add(symbol);
+        JPanel upper = new JPanel(new BorderLayout(8, 0));
+        upper.setOpaque(false);
+        upper.add(caption, BorderLayout.CENTER);
+        upper.add(iconBadge, BorderLayout.EAST);
+        JLabel footnote = new JLabel(hint);
+        footnote.setForeground(new Color(148, 163, 184));
+        footnote.setFont(footnote.getFont().deriveFont(10f));
+        JPanel valueBlock = new JPanel(new GridLayout(0, 1, 0, 3));
+        valueBlock.setOpaque(false);
+        valueBlock.add(value);
+        valueBlock.add(footnote);
+        card.add(upper, BorderLayout.NORTH);
+        card.add(valueBlock, BorderLayout.CENTER);
         return card;
     }
 
@@ -258,6 +283,26 @@ public class DashboardPanel extends JPanel {
                 value == null ? BigDecimal.ZERO : value);
     }
 
+    private static final class HeroPanel extends JPanel {
+        private HeroPanel() {
+            setOpaque(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            Graphics2D g = (Graphics2D) graphics.create();
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g.setPaint(new GradientPaint(0, 0, new Color(29, 78, 216),
+                    getWidth(), getHeight(), new Color(14, 165, 233)));
+            g.fillRoundRect(0, 0, getWidth(), getHeight(), 22, 22);
+            g.setColor(new Color(255, 255, 255, 25));
+            g.fillOval(getWidth() - 150, -80, 210, 210);
+            g.fillOval(getWidth() - 95, 35, 100, 100);
+            g.dispose();
+            super.paintComponent(graphics);
+        }
+    }
+
     private static final class DashboardData {
         private long branches;
         private long employees;
@@ -298,20 +343,28 @@ public class DashboardPanel extends JPanel {
                 return;
             }
             BigDecimal maximum = amounts.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-            int plotHeight = Math.max(1, height - 58);
-            int slotWidth = Math.max(1, (width - 40) / amounts.size());
-            int barWidth = Math.max(12, Math.min(38, slotWidth - 12));
+            int plotHeight = Math.max(1, height - 78);
+            int chartTop = 28;
+            int baseline = height - 38;
+            int slotWidth = Math.max(1, (width - 42) / amounts.size());
+            int barWidth = Math.max(12, Math.min(38, slotWidth - 14));
+            g.setColor(new Color(226, 232, 240));
+            for (int grid = 0; grid < 4; grid++) {
+                int y = chartTop + grid * Math.max(1, plotHeight / 3);
+                g.drawLine(18, y, width - 10, y);
+            }
             for (int index = 0; index < amounts.size(); index++) {
-                int x = 20 + index * slotWidth + (slotWidth - barWidth) / 2;
+                int x = 21 + index * slotWidth + (slotWidth - barWidth) / 2;
                 int barHeight = maximum.signum() == 0 ? 0
                         : amounts.get(index).multiply(BigDecimal.valueOf(plotHeight))
                                 .divide(maximum, 0, java.math.RoundingMode.HALF_UP).intValue();
-                int y = height - 36 - barHeight;
-                g.setColor(new Color(59, 130, 246));
-                g.fillRoundRect(x, y, barWidth, barHeight, 8, 8);
+                int y = baseline - barHeight;
+                g.setPaint(new GradientPaint(x, y, new Color(56, 189, 248),
+                        x + barWidth, baseline, new Color(37, 99, 235)));
+                g.fillRoundRect(x, y, barWidth, barHeight, 9, 9);
                 g.setColor(new Color(71, 85, 105));
                 String label = labels.get(index);
-                g.drawString(label.substring(5), x - 4, height - 15);
+                g.drawString(label.substring(5), x - 3, height - 13);
                 if (barHeight > 22) {
                     g.setColor(Color.WHITE);
                     g.drawString(String.format(java.util.Locale.ROOT, "%.1ftr",

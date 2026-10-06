@@ -8,6 +8,7 @@ import model.ModuleDefinition.ValueType;
 import util.ExcelExporter;
 import util.PasswordUtil;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -51,9 +52,12 @@ public class CrudPanel extends JPanel {
         this.definition = definition;
         setLayout(new BorderLayout(12, 12));
         setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        UiTheme.stylePage(this);
 
         JLabel title = new JLabel(definition.getTitle());
         title.setFont(title.getFont().deriveFont(20f).deriveFont(java.awt.Font.BOLD));
+        title.setIcon(new ClinicIcon(iconForTable(definition.getTableName()), UiTheme.BLUE, 22));
+        title.setIconTextGap(10);
         add(title, BorderLayout.NORTH);
 
         JButton add = new JButton("Thêm");
@@ -71,6 +75,7 @@ public class CrudPanel extends JPanel {
             }
         };
         table = new JTable(tableModel);
+        UiTheme.styleTable(table);
         table.setAutoCreateRowSorter(true);
         TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(tableModel);
         table.setRowSorter(sorter);
@@ -87,7 +92,19 @@ public class CrudPanel extends JPanel {
         });
         JButton reload = new JButton("Tải lại");
         JButton export = new JButton("Xuất Excel");
+        UiTheme.stylePrimary(add);
+        UiTheme.styleSecondary(update);
+        UiTheme.styleDanger(delete);
+        UiTheme.styleSecondary(reload);
+        UiTheme.styleSecondary(export);
+        add.setIcon(new ClinicIcon("employee", Color.WHITE, 15));
+        update.setIcon(new ClinicIcon("detail", UiTheme.BLUE, 15));
+        delete.setIcon(new ClinicIcon("logout", new Color(185, 28, 28), 15));
+        reload.setIcon(new ClinicIcon("history", UiTheme.BLUE, 15));
+        export.setIcon(new ClinicIcon("report", UiTheme.BLUE, 15));
+        UiTheme.styleTextField(search);
         JPanel tableActions = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        tableActions.setOpaque(false);
         tableActions.add(add);
         tableActions.add(update);
         tableActions.add(delete);
@@ -112,6 +129,21 @@ public class CrudPanel extends JPanel {
             }
         });
         loadData();
+    }
+
+    private String iconForTable(String tableName) {
+        switch (tableName) {
+            case "Branch": return "branch";
+            case "Employee": return "employee";
+            case "Customer": return "customer";
+            case "Pet": return "pet";
+            case "Appointment": return "appointment";
+            case "MedicalRecord": return "medical";
+            case "MedicalDetail": return "detail";
+            case "Service": return "service";
+            case "Vaccination": return "vaccination";
+            default: return "document";
+        }
     }
 
     private void loadData() {

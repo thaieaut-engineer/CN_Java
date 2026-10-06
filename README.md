@@ -186,6 +186,7 @@ Trước khi chạy ứng dụng, cần chuẩn bị:
 
 - Đăng nhập, đăng xuất và phân quyền theo `Admin`, `BacSi`, `NhanVien`; mật khẩu mới được băm bằng PBKDF2. Tài khoản mẫu có mật khẩu cũ được nâng cấp sau lần đăng nhập thành công.
 - Dashboard mặc định cho Admin: số chi nhánh, nhân viên, khách hàng, thú cưng, lịch hẹn hôm nay, doanh thu tháng, hóa đơn chưa trả, cảnh báo tồn thấp, lịch hẹn sắp tới và biểu đồ doanh thu 6 tháng.
+- Giao diện dùng theme xanh dương thống nhất, icon vector vẽ bằng Java2D, sidebar điều hướng, thẻ chỉ số và biểu đồ trực quan; không cần tải thêm thư viện icon.
 - Quản lý chi nhánh, nhân viên/tài khoản, khách hàng, thú cưng, lịch hẹn, phiếu khám, chi tiết kê đơn, thuốc và dịch vụ.
 - Theo dõi tiêm phòng, ngày nhắc tiêm/tái khám và tra cứu lịch sử khám toàn chuỗi.
 - Nhập/xuất kho theo giao dịch, cập nhật tồn kho và chặn xuất quá số lượng hiện có.
@@ -194,9 +195,21 @@ Trước khi chạy ứng dụng, cần chuẩn bị:
 
 ## 🚀 Hướng dẫn cài đặt và chạy
 
-1. Mở `schema.sql` bằng SQL Server Management Studio và thực thi để tạo `PetClinicDB`, dữ liệu mẫu và các bảng bổ sung.
-2. Tạo `db.properties` từ `db.properties.example` trong thư mục dự án; nhập `db.url`, `db.user` và `db.password` của SQL Server.
-3. Chạy `mvn clean compile exec:java` hoặc chạy lớp `com.petclinic.pet.clinic.management.PetClinicManagement` từ NetBeans/IDE.
+1. Mở `schema.sql` bằng SQL Server Management Studio và thực thi để tạo `PetClinicDB`, dữ liệu cơ bản và các bảng.
+2. Thực thi tiếp `sample_data.sql` để thêm khách hàng, thú cưng, lịch hẹn, hồ sơ khám, hóa đơn, tiêm chủng và giao dịch kho mẫu. Script có thể chạy lại mà không thêm trùng dữ liệu mẫu.
+3. Tạo `db.properties` từ `db.properties.example` trong thư mục dự án; nhập `db.url`, `db.user` và `db.password` của SQL Server.
+4. Chạy `mvn clean compile exec:java` hoặc chạy lớp `com.petclinic.pet.clinic.management.PetClinicManagement` từ NetBeans/IDE.
+
+Tài khoản đăng nhập mẫu sau khi chạy hai file SQL:
+
+| Vai trò | Tên đăng nhập | Mật khẩu |
+|---|---|---|
+| Quản trị viên | `admin` | `admin123` |
+| Bác sĩ Quận 1 | `bsa` | `123456` |
+| Lễ tân | `letan` | `123456` |
+| Bác sĩ Cầu Giấy | `bacsi_hn_demo` | `PetClinic123!` |
+
+Đây là tài khoản demo để thử nghiệm; hãy đổi mật khẩu trước khi dùng dữ liệu thật.
 
 Không commit mật khẩu cơ sở dữ liệu thật. File `db.properties` đã được loại trừ khỏi Git.
 

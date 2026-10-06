@@ -33,16 +33,25 @@ public class HistoryPanel extends JPanel {
     public HistoryPanel() {
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+        UiTheme.stylePage(this);
         JLabel title = new JLabel("TRA CỨU LỊCH SỬ KHÁM TOÀN CHUỖI");
         title.setFont(title.getFont().deriveFont(20f).deriveFont(java.awt.Font.BOLD));
+        title.setIcon(new ClinicIcon("history", UiTheme.BLUE, 22));
+        title.setIconTextGap(10);
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        controls.setOpaque(false);
         controls.add(new JLabel("Tên khách, số điện thoại hoặc tên thú cưng:"));
         controls.add(query);
+        UiTheme.styleTextField(query);
         JButton search = new JButton("Tra cứu");
         JButton export = new JButton("Xuất Excel");
+        UiTheme.stylePrimary(search);
+        UiTheme.styleSecondary(export);
+        export.setIcon(new ClinicIcon("report", UiTheme.BLUE, 15));
         controls.add(search);
         controls.add(export);
         table.setAutoCreateRowSorter(true);
+        UiTheme.styleTable(table);
         JPanel header = new JPanel(new BorderLayout());
         header.add(title, BorderLayout.NORTH);
         header.add(controls, BorderLayout.SOUTH);
