@@ -7,6 +7,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -22,6 +26,8 @@ public class ReminderPanel extends JPanel {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable table = new JTable(model);
+    private final JLabel status = new JLabel("Đang tải lịch nhắc...");
+    private final AtomicLong loadVersion = new AtomicLong();
 
     public ReminderPanel() {
         setLayout(new BorderLayout(10, 10));
@@ -50,7 +56,13 @@ public class ReminderPanel extends JPanel {
         add(header, BorderLayout.NORTH);
         table.setAutoCreateRowSorter(true);
         UiTheme.styleTable(table);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        status.setForeground(UiTheme.MUTED);
+        status.setBorder(BorderFactory.createEmptyBorder(0, 4, 4, 0));
+        JPanel content = new JPanel(new BorderLayout(0, 6));
+        content.setOpaque(false);
+        content.add(status, BorderLayout.NORTH);
+        content.add(new JScrollPane(table), BorderLayout.CENTER);
+        add(content, BorderLayout.CENTER);
         reload.addActionListener(event -> loadData());
         loadData();
     }
@@ -71,17 +83,50 @@ public class ReminderPanel extends JPanel {
                 + "JOIN Branch b ON b.branch_id=v.branch_id "
                 + "WHERE v.next_due_date BETWEEN DATEADD(day,-7,GETDATE()) AND DATEADD(day,30,GETDATE())"
                 + ") reminders ORDER BY due_date";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet results = statement.executeQuery()) {
-            model.setRowCount(0);
-            while (results.next()) {
-                model.addRow(new Object[]{results.getString("reminder_type"), results.getTimestamp("due_date"),
-                    results.getString("pet_name"), results.getString("customer_name"), results.getString("phone"),
-                    results.getString("branch_name"), results.getString("details")});
+        long version = loadVersion.incrementAndGet();
+        status.setText("Đang tải lịch nhắc...");
+        new javax.swing.SwingWorker<List<Object[]>, Void>() {
+            @Override
+            protected List<Object[]> doInBackground() throws SQLException {
+                List<Object[]> rows = new ArrayList<>();
+                try (Connection connection = DatabaseConnection.getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet results = statement.executeQuery()) {
+                    while (results.next()) {
+                        rows.add(new Object[]{results.getString("reminder_type"), results.getTimestamp("due_date"),
+                            results.getString("pet_name"), results.getString("customer_name"),
+                            results.getString("phone"), results.getString("branch_name"),
+                            results.getString("details")});
+                    }
+                }
+                return rows;
             }
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(this, "Không thể tải lịch nhắc:\n" + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
-        }
+
+            @Override
+            protected void done() {
+                if (version != loadVersion.get()) {
+                    return;
+                }
+                try {
+                    List<Object[]> rows = get();
+                    model.setRowCount(0);
+                    rows.forEach(model::addRow);
+                    status.setText(rows.size() + " lịch nhắc");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    status.setText("Đã hủy tải lịch nhắc.");
+                    showError(e);
+                } catch (ExecutionException e) {
+                    status.setText("Không tải được lịch nhắc.");
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    showError(cause instanceof Exception exception ? exception : new Exception(cause));
+                }
+            }
+        }.execute();
+    }
+
+    private void showError(Exception e) {
+        JOptionPane.showMessageDialog(this, "Không thể tải lịch nhắc:\n" + e.getMessage(),
+                "Lỗi", JOptionPane.ERROR_MESSAGE);
     }
 }

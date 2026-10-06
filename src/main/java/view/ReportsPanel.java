@@ -21,6 +21,8 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -41,6 +43,8 @@ public class ReportsPanel extends JPanel {
     };
     private final JTable table = new JTable(model);
     private final RevenueChart chart = new RevenueChart();
+    private final JLabel status = new JLabel("Đang chuẩn bị báo cáo...");
+    private final AtomicLong reportVersion = new AtomicLong();
 
     public ReportsPanel() {
         setLayout(new BorderLayout(10, 10));
@@ -74,7 +78,13 @@ public class ReportsPanel extends JPanel {
         header.add(title, BorderLayout.NORTH);
         header.add(filters, BorderLayout.SOUTH);
         JPanel results = new JPanel(new BorderLayout(8, 8));
-        results.add(new JScrollPane(table), BorderLayout.CENTER);
+        status.setForeground(UiTheme.MUTED);
+        status.setBorder(BorderFactory.createEmptyBorder(0, 4, 4, 0));
+        JPanel tableContent = new JPanel(new BorderLayout(0, 6));
+        tableContent.setOpaque(false);
+        tableContent.add(status, BorderLayout.NORTH);
+        tableContent.add(new JScrollPane(table), BorderLayout.CENTER);
+        results.add(tableContent, BorderLayout.CENTER);
         chart.setPreferredSize(new Dimension(700, 230));
         chart.setBackground(Color.WHITE);
         results.add(chart, BorderLayout.SOUTH);
@@ -86,47 +96,75 @@ public class ReportsPanel extends JPanel {
     }
 
     private void loadReport() {
+        final LocalDate from;
+        final LocalDate to;
         try {
-            LocalDate from = LocalDate.parse(fromDate.getText().trim());
-            LocalDate to = LocalDate.parse(toDate.getText().trim());
+            from = LocalDate.parse(fromDate.getText().trim());
+            to = LocalDate.parse(toDate.getText().trim());
             if (to.isBefore(from)) throw new IllegalArgumentException("Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.");
-            String sql = "SELECT b.name AS branch_name, COUNT(i.invoice_id) AS invoice_count, "
-                    + "COALESCE(SUM(i.total_amount), 0) AS revenue FROM Branch b "
-                    + "LEFT JOIN MedicalRecord mr ON mr.branch_id=b.branch_id "
-                    + "LEFT JOIN Invoice i ON i.record_id=mr.record_id AND i.status=N'Paid' "
-                    + "AND i.created_date >= ? AND i.created_date < ? "
-                    + "GROUP BY b.branch_id,b.name ORDER BY b.name";
-            List<String> labels = new ArrayList<>();
-            List<BigDecimal> amounts = new ArrayList<>();
-            BigDecimal total = BigDecimal.ZERO;
-            long invoices = 0;
-            try (Connection connection = DatabaseConnection.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setDate(1, Date.valueOf(from));
-                statement.setDate(2, Date.valueOf(to.plusDays(1)));
-                try (ResultSet results = statement.executeQuery()) {
-                    model.setRowCount(0);
-                    while (results.next()) {
-                        String branch = results.getString("branch_name");
-                        long count = results.getLong("invoice_count");
-                        BigDecimal revenue = results.getBigDecimal("revenue");
-                        labels.add(branch);
-                        amounts.add(revenue);
-                        total = total.add(revenue);
-                        invoices += count;
-                        model.addRow(new Object[]{branch, count, revenue});
-                    }
-                    model.addRow(new Object[]{"TỔNG CỘNG", invoices, total});
-                }
-            }
-            chart.setData(labels, amounts);
         } catch (DateTimeParseException | IllegalArgumentException e) {
             JOptionPane.showMessageDialog(this,
                     e.getMessage() == null ? "Ngày phải theo định dạng yyyy-MM-dd." : e.getMessage(),
                     "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
-        } catch (SQLException e) {
-            showError(e);
+            return;
         }
+        long version = reportVersion.incrementAndGet();
+        status.setText("Đang lập báo cáo...");
+        new javax.swing.SwingWorker<ReportData, Void>() {
+            @Override
+            protected ReportData doInBackground() throws SQLException {
+                String sql = "SELECT b.name AS branch_name, COUNT(i.invoice_id) AS invoice_count, "
+                        + "COALESCE(SUM(i.total_amount), 0) AS revenue FROM Branch b "
+                        + "LEFT JOIN MedicalRecord mr ON mr.branch_id=b.branch_id "
+                        + "LEFT JOIN Invoice i ON i.record_id=mr.record_id AND i.status=N'Paid' "
+                        + "AND i.created_date >= ? AND i.created_date < ? "
+                        + "GROUP BY b.branch_id,b.name ORDER BY b.name";
+                ReportData data = new ReportData();
+                BigDecimal total = BigDecimal.ZERO;
+                long invoices = 0;
+                try (Connection connection = DatabaseConnection.getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setDate(1, Date.valueOf(from));
+                    statement.setDate(2, Date.valueOf(to.plusDays(1)));
+                    try (ResultSet results = statement.executeQuery()) {
+                        while (results.next()) {
+                            String branch = results.getString("branch_name");
+                            long count = results.getLong("invoice_count");
+                            BigDecimal revenue = results.getBigDecimal("revenue");
+                            data.labels.add(branch);
+                            data.amounts.add(revenue);
+                            data.rows.add(new Object[]{branch, count, revenue});
+                            total = total.add(revenue);
+                            invoices += count;
+                        }
+                    }
+                }
+                data.rows.add(new Object[]{"TỔNG CỘNG", invoices, total});
+                return data;
+            }
+
+            @Override
+            protected void done() {
+                if (version != reportVersion.get()) {
+                    return;
+                }
+                try {
+                    ReportData data = get();
+                    model.setRowCount(0);
+                    data.rows.forEach(model::addRow);
+                    chart.setData(data.labels, data.amounts);
+                    status.setText(data.labels.size() + " chi nhánh");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    status.setText("Đã hủy lập báo cáo.");
+                    showError(e);
+                } catch (ExecutionException e) {
+                    status.setText("Không lập được báo cáo.");
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    showError(cause instanceof Exception exception ? exception : new Exception(cause));
+                }
+            }
+        }.execute();
     }
 
     private void export() {
@@ -145,6 +183,12 @@ public class ReportsPanel extends JPanel {
 
     private void showError(Exception e) {
         JOptionPane.showMessageDialog(this, "Không thể lập báo cáo:\n" + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private static final class ReportData {
+        private final List<String> labels = new ArrayList<>();
+        private final List<BigDecimal> amounts = new ArrayList<>();
+        private final List<Object[]> rows = new ArrayList<>();
     }
 
     private static final class RevenueChart extends JPanel {

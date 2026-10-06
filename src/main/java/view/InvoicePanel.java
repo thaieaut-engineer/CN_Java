@@ -15,8 +15,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -24,7 +29,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
-import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
 
 public class InvoicePanel extends JPanel {
@@ -34,6 +38,8 @@ public class InvoicePanel extends JPanel {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable table = new JTable(model);
+    private final JLabel status = new JLabel("Đang tải hóa đơn...");
+    private final AtomicLong loadVersion = new AtomicLong();
 
     public InvoicePanel(Employee employee) {
         setLayout(new BorderLayout(10, 10));
@@ -69,9 +75,15 @@ public class InvoicePanel extends JPanel {
         header.add(title, BorderLayout.NORTH);
         header.add(controls, BorderLayout.SOUTH);
         add(header, BorderLayout.NORTH);
+        status.setForeground(UiTheme.MUTED);
+        status.setBorder(BorderFactory.createEmptyBorder(0, 4, 4, 0));
         table.setAutoCreateRowSorter(true);
         UiTheme.styleTable(table);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JPanel content = new JPanel(new BorderLayout(0, 6));
+        content.setOpaque(false);
+        content.add(status, BorderLayout.NORTH);
+        content.add(new JScrollPane(table), BorderLayout.CENTER);
+        add(content, BorderLayout.CENTER);
 
         create.addActionListener(event -> openCreateDialog());
         paid.addActionListener(event -> openPaymentDialog());
@@ -82,34 +94,70 @@ public class InvoicePanel extends JPanel {
     }
 
     private void openCreateDialog() {
-        JTextField recordId = new JTextField(18);
-        JTextField paymentMethod = new JTextField("Tiền mặt", 18);
+        JComboBox<InvoiceRecordOption> record = new JComboBox<>();
+        record.addItem(new InvoiceRecordOption(0, "— Chọn phiếu khám —", null));
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT r.record_id, p.name AS pet_name, "
+                             + "CONVERT(varchar(16), r.visit_date, 120) AS visit_time "
+                             + "FROM MedicalRecord r JOIN Pet p ON p.pet_id = r.pet_id "
+                             + "WHERE EXISTS (SELECT 1 FROM MedicalDetail d WHERE d.record_id = r.record_id) "
+                             + "AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.record_id = r.record_id) "
+                             + "ORDER BY r.visit_date DESC");
+             ResultSet results = statement.executeQuery()) {
+            while (results.next()) {
+                record.addItem(new InvoiceRecordOption(results.getInt("record_id"),
+                        results.getString("pet_name"), results.getString("visit_time")));
+            }
+        } catch (SQLException e) {
+            showError(e);
+            return;
+        }
+        if (record.getItemCount() == 1) {
+            JOptionPane.showMessageDialog(this, "Không có phiếu khám đủ điều kiện để lập hóa đơn.",
+                    "Danh sách trống", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        record.setFont(new java.awt.Font("Segoe UI", java.awt.Font.PLAIN, 13));
+        record.setPreferredSize(new java.awt.Dimension(300, 36));
+        record.putClientProperty("JComponent.roundRect", Boolean.TRUE);
+        JComboBox<String> paymentMethod = new JComboBox<>(new String[]{"Tiền mặt", "Chuyển khoản"});
+        paymentMethod.setFont(new java.awt.Font("Segoe UI", java.awt.Font.PLAIN, 13));
+        paymentMethod.setPreferredSize(new java.awt.Dimension(300, 36));
+        paymentMethod.putClientProperty("JComponent.roundRect", Boolean.TRUE);
         JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        UiTheme.styleSurface(form);
         GridBagConstraints constraints = new GridBagConstraints();
         constraints.insets = new Insets(6, 6, 6, 6);
         constraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        form.add(new JLabel("Mã phiếu khám:"), constraints);
+        JLabel recordLabel = new JLabel("Phiếu khám:");
+        recordLabel.setFont(recordLabel.getFont().deriveFont(java.awt.Font.BOLD, 12f));
+        form.add(recordLabel, constraints);
         constraints.gridx = 1;
         constraints.weightx = 1;
-        form.add(recordId, constraints);
+        form.add(record, constraints);
         constraints.gridx = 0;
         constraints.gridy = 1;
         constraints.weightx = 0;
-        form.add(new JLabel("Phương thức thanh toán:"), constraints);
+        JLabel methodLabel = new JLabel("Phương thức thanh toán:");
+        methodLabel.setFont(methodLabel.getFont().deriveFont(java.awt.Font.BOLD, 12f));
+        form.add(methodLabel, constraints);
         constraints.gridx = 1;
         constraints.weightx = 1;
         form.add(paymentMethod, constraints);
         if (JOptionPane.showConfirmDialog(this, form, "Tạo hóa đơn",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
-            createInvoice(recordId.getText(), paymentMethod.getText());
+            InvoiceRecordOption selected = (InvoiceRecordOption) record.getSelectedItem();
+            if (selected == null || selected.recordId <= 0) {
+                JOptionPane.showMessageDialog(this, "Không có phiếu khám đủ điều kiện để lập hóa đơn.");
+                return;
+            }
+            createInvoice(selected.recordId, paymentMethod.getSelectedItem().toString());
         }
     }
 
-    private void createInvoice(String recordId, String paymentMethod) {
+    private void createInvoice(int id, String paymentMethod) {
         try {
-            int id = Integer.parseInt(recordId.trim());
-            if (paymentMethod.isBlank()) throw new IllegalArgumentException("Phương thức thanh toán không được để trống.");
             String sql = "INSERT INTO Invoice (record_id, total_amount, status, payment_method) "
                     + "SELECT ?, COALESCE(SUM(d.quantity * d.unit_price), 0), N'Unpaid', ? "
                     + "FROM MedicalDetail d WHERE d.record_id = ? "
@@ -125,10 +173,6 @@ public class InvoicePanel extends JPanel {
             }
             loadData();
             JOptionPane.showMessageDialog(this, "Đã tạo hóa đơn ở trạng thái chưa thanh toán.");
-        } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Mã phiếu khám phải là số nguyên.", "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
-        } catch (IllegalArgumentException e) {
-            JOptionPane.showMessageDialog(this, e.getMessage(), "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
         } catch (SQLException e) {
             showError(e);
         }
@@ -140,17 +184,16 @@ public class InvoicePanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Hãy chọn hóa đơn cần thanh toán.");
             return;
         }
-        String method = JOptionPane.showInputDialog(this, "Phương thức thanh toán:",
-                "Tiền mặt", JOptionPane.QUESTION_MESSAGE);
+        String[] methods = {"Tiền mặt", "Chuyển khoản"};
+        Object currentMethod = model.getValueAt(row, 8);
+        Object method = JOptionPane.showInputDialog(this, "Chọn phương thức thanh toán:",
+                "Xác nhận thanh toán", JOptionPane.QUESTION_MESSAGE, null, methods,
+                java.util.Arrays.asList(methods).contains(currentMethod) ? currentMethod : methods[0]);
         if (method == null) return;
-        if (method.isBlank()) {
-            JOptionPane.showMessageDialog(this, "Phương thức thanh toán không được để trống.");
-            return;
-        }
         String sql = "UPDATE Invoice SET status=N'Paid', payment_method=? WHERE invoice_id=?";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setNString(1, method.trim());
+            statement.setNString(1, method.toString());
             statement.setObject(2, model.getValueAt(row, 0));
             if (statement.executeUpdate() != 1) throw new SQLException("Không tìm thấy hóa đơn.");
             loadData();
@@ -218,19 +261,47 @@ public class InvoicePanel extends JPanel {
                 + "JOIN MedicalRecord mr ON mr.record_id=i.record_id JOIN Pet p ON p.pet_id=mr.pet_id "
                 + "JOIN Customer c ON c.customer_id=p.customer_id JOIN Branch b ON b.branch_id=mr.branch_id "
                 + "ORDER BY i.created_date DESC";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet results = statement.executeQuery()) {
-            model.setRowCount(0);
-            while (results.next()) {
-                model.addRow(new Object[]{results.getInt("invoice_id"), results.getInt("record_id"),
-                    results.getString("pet_name"), results.getString("customer_name"), results.getString("branch_name"),
-                    results.getTimestamp("created_date"), results.getBigDecimal("total_amount"),
-                    results.getString("status"), results.getString("payment_method")});
+        long version = loadVersion.incrementAndGet();
+        status.setText("Đang tải hóa đơn...");
+        new javax.swing.SwingWorker<List<Object[]>, Void>() {
+            @Override
+            protected List<Object[]> doInBackground() throws SQLException {
+                List<Object[]> rows = new ArrayList<>();
+                try (Connection connection = DatabaseConnection.getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet results = statement.executeQuery()) {
+                    while (results.next()) {
+                        rows.add(new Object[]{results.getInt("invoice_id"), results.getInt("record_id"),
+                            results.getString("pet_name"), results.getString("customer_name"),
+                            results.getString("branch_name"), results.getTimestamp("created_date"),
+                            results.getBigDecimal("total_amount"), results.getString("status"),
+                            results.getString("payment_method")});
+                    }
+                }
+                return rows;
             }
-        } catch (SQLException e) {
-            showError(e);
-        }
+
+            @Override
+            protected void done() {
+                if (version != loadVersion.get()) {
+                    return;
+                }
+                try {
+                    List<Object[]> rows = get();
+                    model.setRowCount(0);
+                    rows.forEach(model::addRow);
+                    status.setText(rows.size() + " hóa đơn");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    status.setText("Đã hủy tải hóa đơn.");
+                    showError(e);
+                } catch (ExecutionException e) {
+                    status.setText("Không tải được hóa đơn.");
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    showError(cause instanceof Exception exception ? exception : new Exception(cause));
+                }
+            }
+        }.execute();
     }
 
     private void export() {
@@ -249,5 +320,23 @@ public class InvoicePanel extends JPanel {
 
     private void showError(Exception e) {
         JOptionPane.showMessageDialog(this, "Thao tác thất bại:\n" + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private static final class InvoiceRecordOption {
+        private final int recordId;
+        private final String petName;
+        private final String visitTime;
+
+        private InvoiceRecordOption(int recordId, String petName, String visitTime) {
+            this.recordId = recordId;
+            this.petName = petName;
+            this.visitTime = visitTime;
+        }
+
+        @Override
+        public String toString() {
+            String date = visitTime == null ? "Chưa có ngày khám" : visitTime;
+            return "#" + recordId + "  ·  " + petName + "  ·  " + date;
+        }
     }
 }

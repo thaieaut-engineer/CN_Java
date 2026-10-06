@@ -196,9 +196,12 @@ Trước khi chạy ứng dụng, cần chuẩn bị:
 ## 🚀 Hướng dẫn cài đặt và chạy
 
 1. Mở `schema.sql` bằng SQL Server Management Studio và thực thi để tạo `PetClinicDB`, dữ liệu cơ bản và các bảng.
-2. Thực thi tiếp `sample_data.sql` để thêm khách hàng, thú cưng, lịch hẹn, hồ sơ khám, hóa đơn, tiêm chủng và giao dịch kho mẫu. Script có thể chạy lại mà không thêm trùng dữ liệu mẫu.
-3. Tạo `db.properties` từ `db.properties.example` trong thư mục dự án; nhập `db.url`, `db.user` và `db.password` của SQL Server.
-4. Chạy `mvn clean compile exec:java` hoặc chạy lớp `com.petclinic.pet.clinic.management.PetClinicManagement` từ NetBeans/IDE.
+2. Chạy `photo_columns.sql` một lần để bổ sung cột ảnh nếu database đã được tạo từ trước. Với database mới, file này vẫn an toàn để chạy.
+3. Thực thi `sample_data.sql` để thêm khách hàng, thú cưng, lịch hẹn, hồ sơ khám, hóa đơn, tiêm chủng và giao dịch kho mẫu. Script có thể chạy lại mà không thêm trùng dữ liệu mẫu.
+4. Tạo `db.properties` từ `db.properties.example` trong thư mục dự án; nhập `db.url`, `db.user` và `db.password` của SQL Server.
+5. Chạy `mvn clean compile exec:java` hoặc chạy lớp `com.petclinic.pet.clinic.management.PetClinicManagement` từ NetBeans/IDE.
+
+Trong cửa sổ thêm/cập nhật thú cưng và nhân viên, có thể chọn ảnh JPG, PNG, GIF hoặc BMP (tối đa 5 MB). Ảnh được lưu trong SQL Server và có thể gỡ bỏ khi cập nhật hồ sơ.
 
 Tài khoản đăng nhập mẫu sau khi chạy hai file SQL:
 

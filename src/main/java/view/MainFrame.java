@@ -247,8 +247,8 @@ public class MainFrame extends JFrame {
 
     private ModuleDefinition createEmployeeDefinition() {
         return definition("Quản lý nhân viên & tài khoản", "Employee", "employee_id",
-                fields(integer("branch_id", "Mã chi nhánh", true), text("full_name", "Họ tên", true),
-                        text("role", "Vai trò (Admin/BacSi/NhanVien)", true), text("username", "Tên đăng nhập", true),
+                fields(integer("branch_id", "Chi nhánh", true), text("full_name", "Họ tên", true),
+                        text("role", "Vai trò", true), text("username", "Tên đăng nhập", true),
                         new Field("password", "Mật khẩu (để trống khi giữ nguyên)", ValueType.PASSWORD, true)),
                 columns(col("employee_id", "Mã"), col("branch_id", "Chi nhánh"), col("full_name", "Họ tên"),
                         col("role", "Vai trò"), col("username", "Tài khoản")));
@@ -263,7 +263,7 @@ public class MainFrame extends JFrame {
 
     private ModuleDefinition createPetDefinition() {
         return definition("Quản lý thú cưng", "Pet", "pet_id",
-                fields(integer("customer_id", "Mã khách hàng", true), text("name", "Tên thú cưng", true),
+                fields(integer("customer_id", "Chủ nuôi", true), text("name", "Tên thú cưng", true),
                         text("species", "Loài", false), text("breed", "Giống", false), integer("age", "Tuổi", false)),
                 columns(col("pet_id", "Mã"), col("customer_id", "Mã chủ nuôi"), col("name", "Tên"),
                         col("species", "Loài"), col("breed", "Giống"), col("age", "Tuổi")));
@@ -271,10 +271,10 @@ public class MainFrame extends JFrame {
 
     private ModuleDefinition createAppointmentDefinition() {
         return definition("Quản lý lịch hẹn", "Appointment", "appointment_id",
-                fields(integer("customer_id", "Mã khách hàng", true), integer("pet_id", "Mã thú cưng", true),
-                        integer("branch_id", "Mã chi nhánh", true), integer("employee_id", "Mã nhân viên (có thể trống)", false),
+                fields(integer("customer_id", "Khách hàng", true), integer("pet_id", "Thú cưng", true),
+                        integer("branch_id", "Chi nhánh", true), integer("employee_id", "Nhân viên phụ trách (có thể trống)", false),
                         dateTime("appointment_date", "Ngày giờ (yyyy-MM-dd HH:mm:ss)", true),
-                        text("status", "Trạng thái (Pending/Confirmed/Completed/Cancelled)", false),
+                        text("status", "Trạng thái", true),
                         text("notes", "Ghi chú", false)),
                 columns(col("appointment_id", "Mã"), col("customer_id", "Khách"), col("pet_id", "Thú cưng"),
                         col("branch_id", "Chi nhánh"), col("employee_id", "Nhân viên"), col("appointment_date", "Ngày giờ"),
@@ -283,8 +283,8 @@ public class MainFrame extends JFrame {
 
     private ModuleDefinition createMedicalDefinition() {
         return definition("Quản lý phiếu khám", "MedicalRecord", "record_id",
-                fields(integer("pet_id", "Mã thú cưng", true), integer("employee_id", "Mã bác sĩ", true),
-                        integer("branch_id", "Mã chi nhánh", true), dateTime("visit_date", "Ngày khám (có thể trống)", false),
+                fields(integer("pet_id", "Thú cưng", true), integer("employee_id", "Bác sĩ", true),
+                        integer("branch_id", "Chi nhánh", true), dateTime("visit_date", "Ngày khám (có thể trống)", false),
                         text("diagnosis", "Chẩn đoán", false), text("notes", "Ghi chú", false),
                         dateTime("revisit_date", "Ngày tái khám (có thể trống)", false)),
                 columns(col("record_id", "Mã"), col("pet_id", "Thú cưng"), col("employee_id", "Bác sĩ"),
@@ -294,7 +294,7 @@ public class MainFrame extends JFrame {
 
     private ModuleDefinition createMedicalDetailDefinition() {
         return definition("Chi tiết khám bệnh / kê thuốc, dịch vụ", "MedicalDetail", "detail_id",
-                fields(integer("record_id", "Mã phiếu khám", true), integer("service_id", "Mã thuốc/dịch vụ", true),
+                fields(integer("record_id", "Phiếu khám", true), integer("service_id", "Thuốc / dịch vụ", true),
                         integer("quantity", "Số lượng", true), decimal("unit_price", "Đơn giá", true)),
                 columns(col("detail_id", "Mã"), col("record_id", "Phiếu khám"), col("service_id", "Thuốc/dịch vụ"),
                         col("quantity", "Số lượng"), col("unit_price", "Đơn giá")));
@@ -310,9 +310,9 @@ public class MainFrame extends JFrame {
 
     private JPanel createVaccinationPanel() {
         return new CrudPanel(definition("Theo dõi tiêm phòng và lịch nhắc", "Vaccination", "vaccination_id",
-                fields(integer("record_id", "Mã phiếu khám (có thể trống)", false),
-                        integer("pet_id", "Mã thú cưng", true), integer("service_id", "Mã vắc-xin", true),
-                        integer("employee_id", "Mã nhân viên", true), integer("branch_id", "Mã chi nhánh", true),
+                fields(integer("record_id", "Phiếu khám (có thể trống)", false),
+                        integer("pet_id", "Thú cưng", true), integer("service_id", "Vắc-xin", true),
+                        integer("employee_id", "Nhân viên", true), integer("branch_id", "Chi nhánh", true),
                         dateTime("administered_date", "Ngày tiêm (yyyy-MM-dd HH:mm:ss)", true),
                         dateTime("next_due_date", "Ngày tiêm nhắc (yyyy-MM-dd HH:mm:ss)", true),
                         text("notes", "Ghi chú", false)),

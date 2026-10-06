@@ -16,8 +16,14 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -34,6 +40,8 @@ public class InventoryPanel extends JPanel {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable table = new JTable(model);
+    private final JLabel status = new JLabel("Đang tải giao dịch kho...");
+    private final AtomicLong loadVersion = new AtomicLong();
 
     public InventoryPanel(Employee employee) {
         this.employee = employee;
@@ -66,9 +74,15 @@ public class InventoryPanel extends JPanel {
         header.add(title, BorderLayout.NORTH);
         header.add(buttons, BorderLayout.SOUTH);
         add(header, BorderLayout.NORTH);
+        status.setForeground(UiTheme.MUTED);
+        status.setBorder(BorderFactory.createEmptyBorder(0, 4, 4, 0));
         table.setAutoCreateRowSorter(true);
         UiTheme.styleTable(table);
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        JPanel content = new JPanel(new BorderLayout(0, 6));
+        content.setOpaque(false);
+        content.add(status, BorderLayout.NORTH);
+        content.add(new JScrollPane(table), BorderLayout.CENTER);
+        add(content, BorderLayout.CENTER);
 
         receive.addActionListener(event -> openMovementDialog(true));
         issue.addActionListener(event -> openMovementDialog(false));
@@ -78,17 +92,42 @@ public class InventoryPanel extends JPanel {
     }
 
     private void openMovementDialog(boolean incoming) {
-        JTextField serviceId = new JTextField(18);
+        JComboBox<StockOption> service = new JComboBox<>();
+        service.addItem(new StockOption(0, "— Chọn thuốc / vắc-xin —", 0));
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT service_id, name, stock_quantity FROM Service "
+                             + "WHERE type IN (N'Thuoc', N'TiemPhong') ORDER BY name");
+             ResultSet results = statement.executeQuery()) {
+            while (results.next()) {
+                service.addItem(new StockOption(results.getInt("service_id"),
+                        results.getString("name"), results.getInt("stock_quantity")));
+            }
+        } catch (SQLException e) {
+            showError(e);
+            return;
+        }
+        if (service.getItemCount() == 1) {
+            JOptionPane.showMessageDialog(this, "Chưa có thuốc hoặc vắc-xin để chọn.",
+                    "Danh mục trống", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        service.setFont(new java.awt.Font("Segoe UI", java.awt.Font.PLAIN, 13));
+        service.setPreferredSize(new java.awt.Dimension(300, 36));
+        service.putClientProperty("JComponent.roundRect", Boolean.TRUE);
         JTextField quantity = new JTextField(18);
         JTextField unitPrice = new JTextField(18);
         JTextField notes = new JTextField(18);
         JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+        UiTheme.styleSurface(form);
+        UiTheme.styleTextField(quantity);
+        UiTheme.styleTextField(unitPrice);
+        UiTheme.styleTextField(notes);
         GridBagConstraints constraints = new GridBagConstraints();
         constraints.insets = new Insets(6, 6, 6, 6);
         constraints.fill = GridBagConstraints.HORIZONTAL;
         constraints.weightx = 1;
-        addField(form, constraints, 0, "Mã thuốc/vắc-xin:", serviceId);
+        addField(form, constraints, 0, "Thuốc / vắc-xin:", service);
         addField(form, constraints, 1, "Số lượng:", quantity);
         if (incoming) {
             addField(form, constraints, 2, "Đơn giá nhập:", unitPrice);
@@ -99,40 +138,65 @@ public class InventoryPanel extends JPanel {
                 incoming ? "Nhập kho" : "Xuất kho",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (result == JOptionPane.OK_OPTION) {
-            record(incoming, serviceId.getText(), quantity.getText(),
+            StockOption selected = (StockOption) service.getSelectedItem();
+            record(incoming, selected == null ? null : selected.serviceId, quantity.getText(),
                     unitPrice.getText(), notes.getText());
         }
     }
 
     private void addField(JPanel form, GridBagConstraints constraints, int row,
-            String label, JTextField input) {
+            String label, JComponent input) {
         constraints.gridx = 0;
         constraints.gridy = row;
         constraints.weightx = 0;
-        form.add(new JLabel(label), constraints);
+        JLabel fieldLabel = new JLabel(label);
+        fieldLabel.setFont(fieldLabel.getFont().deriveFont(java.awt.Font.BOLD, 12f));
+        form.add(fieldLabel, constraints);
         constraints.gridx = 1;
         constraints.weightx = 1;
         form.add(input, constraints);
     }
 
-    private void record(boolean incoming, String serviceIdText, String quantityText,
+    private void record(boolean incoming, Integer serviceId, String quantityText,
             String unitPriceText, String notesText) {
         try {
-            int id = Integer.parseInt(serviceIdText.trim());
+            if (serviceId == null || serviceId <= 0) {
+                throw new IllegalArgumentException("Hãy chọn thuốc hoặc vắc-xin.");
+            }
             int amount = Integer.parseInt(quantityText.trim());
             if (amount <= 0) throw new IllegalArgumentException("Số lượng phải lớn hơn 0.");
             BigDecimal price = incoming ? new BigDecimal(unitPriceText.trim()) : BigDecimal.ZERO;
             if (incoming && price.signum() < 0) throw new IllegalArgumentException("Đơn giá nhập không được âm.");
-            if (incoming) receiveStock(id, amount, price);
-            else issueStock(id, amount, notesText.trim());
-            JOptionPane.showMessageDialog(this, incoming ? "Đã nhập kho và cập nhật tồn." : "Đã xuất kho và cập nhật tồn.");
-            loadData();
+            setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
+            new javax.swing.SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() throws SQLException {
+                    if (incoming) receiveStock(serviceId, amount, price);
+                    else issueStock(serviceId, amount, notesText.trim());
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    setCursor(java.awt.Cursor.getDefaultCursor());
+                    try {
+                        get();
+                        JOptionPane.showMessageDialog(InventoryPanel.this,
+                                incoming ? "Đã nhập kho và cập nhật tồn." : "Đã xuất kho và cập nhật tồn.");
+                        loadData();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        showError(e);
+                    } catch (ExecutionException e) {
+                        Throwable cause = e.getCause() == null ? e : e.getCause();
+                        showError(cause instanceof Exception exception ? exception : new Exception(cause));
+                    }
+                }
+            }.execute();
         } catch (NumberFormatException e) {
-            JOptionPane.showMessageDialog(this, "Mã, số lượng và đơn giá phải đúng định dạng số.", "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Số lượng và đơn giá phải đúng định dạng số.", "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
         } catch (IllegalArgumentException e) {
             JOptionPane.showMessageDialog(this, e.getMessage(), "Dữ liệu chưa hợp lệ", JOptionPane.WARNING_MESSAGE);
-        } catch (SQLException e) {
-            showError(e);
         }
     }
 
@@ -204,18 +268,45 @@ public class InventoryPanel extends JPanel {
                 + "UNION ALL SELECT N'Xuất', i.issue_date, s.service_id, s.name, i.quantity, NULL, e.full_name, i.notes "
                 + "FROM InventoryIssue i JOIN Service s ON s.service_id=i.service_id JOIN Employee e ON e.employee_id=i.employee_id"
                 + ") movements ORDER BY movement_date DESC";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet results = statement.executeQuery()) {
-            model.setRowCount(0);
-            while (results.next()) {
-                model.addRow(new Object[]{results.getString("movement_type"), results.getTimestamp("movement_date"),
-                    results.getInt("service_id"), results.getString("service_name"), results.getInt("quantity"),
-                    results.getBigDecimal("unit_price"), results.getString("employee_name"), results.getString("notes")});
+        long version = loadVersion.incrementAndGet();
+        status.setText("Đang tải giao dịch kho...");
+        new javax.swing.SwingWorker<List<Object[]>, Void>() {
+            @Override
+            protected List<Object[]> doInBackground() throws SQLException {
+                List<Object[]> rows = new ArrayList<>();
+                try (Connection connection = DatabaseConnection.getConnection();
+                     PreparedStatement statement = connection.prepareStatement(sql);
+                     ResultSet results = statement.executeQuery()) {
+                    while (results.next()) {
+                        rows.add(new Object[]{results.getString("movement_type"), results.getTimestamp("movement_date"),
+                            results.getInt("service_id"), results.getString("service_name"), results.getInt("quantity"),
+                            results.getBigDecimal("unit_price"), results.getString("employee_name"),
+                            results.getString("notes")});
+                    }
+                }
+                return rows;
             }
-        } catch (SQLException e) {
-            showError(e);
-        }
+
+            @Override
+            protected void done() {
+                if (version != loadVersion.get()) {
+                    return;
+                }
+                try {
+                    List<Object[]> rows = get();
+                    model.setRowCount(0);
+                    rows.forEach(model::addRow);
+                    status.setText(rows.size() + " giao dịch");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    status.setText("Đã hủy tải giao dịch.");
+                    showError(e);
+                } catch (ExecutionException e) {
+                    status.setText("Không tải được giao dịch.");
+                    showError(e.getCause() instanceof Exception cause ? cause : e);
+                }
+            }
+        }.execute();
     }
 
     private void export() {
@@ -234,6 +325,23 @@ public class InventoryPanel extends JPanel {
 
     private void showError(Exception e) {
         JOptionPane.showMessageDialog(this, "Thao tác thất bại:\n" + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private static final class StockOption {
+        private final int serviceId;
+        private final String name;
+        private final int stock;
+
+        private StockOption(int serviceId, String name, int stock) {
+            this.serviceId = serviceId;
+            this.name = name;
+            this.stock = stock;
+        }
+
+        @Override
+        public String toString() {
+            return name + "  ·  Tồn kho: " + stock;
+        }
     }
 
     @FunctionalInterface

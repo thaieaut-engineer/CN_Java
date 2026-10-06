@@ -32,6 +32,7 @@ CREATE TABLE Pet (
     species NVARCHAR(50), -- Chó, Mèo...
     breed NVARCHAR(50),   -- Giống
     age INT,
+    photo VARBINARY(MAX) NULL,
     CONSTRAINT FK_Pet_Customer FOREIGN KEY (customer_id) 
         REFERENCES Customer(customer_id) ON DELETE CASCADE
 );
@@ -44,6 +45,7 @@ CREATE TABLE Employee (
     role NVARCHAR(50) NOT NULL, -- Admin, BacSi, NhanVien
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
+    photo VARBINARY(MAX) NULL,
     CONSTRAINT FK_Employee_Branch FOREIGN KEY (branch_id) 
         REFERENCES Branch(branch_id)
 );

@@ -14,14 +14,11 @@ import java.sql.SQLException;
 import java.util.Properties;
 
 public class DatabaseConnection {
+    private static volatile Properties cachedProperties;
+    private static volatile boolean driverLoaded;
+
     public static Connection getConnection() throws SQLException {
-        Properties properties = new Properties();
-        Path configPath = Path.of("db.properties");
-        try (InputStream input = Files.newInputStream(configPath)) {
-            properties.load(input);
-        } catch (IOException e) {
-            throw new SQLException("Không thể đọc db.properties. Hãy tạo file từ db.properties.example.", e);
-        }
+        Properties properties = loadProperties();
 
         String url = properties.getProperty("db.url");
         String user = properties.getProperty("db.user");
@@ -29,11 +26,45 @@ public class DatabaseConnection {
         if (url == null || url.isBlank() || user == null || password == null) {
             throw new SQLException("Thiếu db.url, db.user hoặc db.password trong db.properties.");
         }
-        try {
-            Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
-        } catch (ClassNotFoundException e) {
-            throw new SQLException("Không tìm thấy SQL Server JDBC Driver.", e);
-        }
+        ensureDriverLoaded();
         return DriverManager.getConnection(url, user, password);
+    }
+
+    private static void ensureDriverLoaded() throws SQLException {
+        if (driverLoaded) {
+            return;
+        }
+        synchronized (DatabaseConnection.class) {
+            if (driverLoaded) {
+                return;
+            }
+            try {
+                Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+                driverLoaded = true;
+            } catch (ClassNotFoundException e) {
+                throw new SQLException("Không tìm thấy SQL Server JDBC Driver.", e);
+            }
+        }
+    }
+
+    private static Properties loadProperties() throws SQLException {
+        Properties properties = cachedProperties;
+        if (properties != null) {
+            return properties;
+        }
+        synchronized (DatabaseConnection.class) {
+            if (cachedProperties != null) {
+                return cachedProperties;
+            }
+            Properties loaded = new Properties();
+            Path configPath = Path.of("db.properties");
+            try (InputStream input = Files.newInputStream(configPath)) {
+                loaded.load(input);
+            } catch (IOException e) {
+                throw new SQLException("Không thể đọc db.properties. Hãy tạo file từ db.properties.example.", e);
+            }
+            cachedProperties = loaded;
+            return loaded;
+        }
     }
 }
