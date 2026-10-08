@@ -1,6 +1,6 @@
 package view;
 
-import dao.ReportsDAO;
+import bus.ReportsBUS;
 import model.RevenueReport;
 import model.RevenueBranchRow;
 import util.ExcelExporter;
@@ -32,7 +32,7 @@ import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
 
 public class ReportsPanel extends JPanel {
-    private final ReportsDAO reportsDAO = new ReportsDAO();
+    private final ReportsBUS reportsBUS = new ReportsBUS();
     private final JTextField fromDate = new JTextField(10);
     private final JTextField toDate = new JTextField(10);
     private final DefaultTableModel model = new DefaultTableModel(
@@ -111,7 +111,7 @@ public class ReportsPanel extends JPanel {
         new javax.swing.SwingWorker<RevenueReport, Void>() {
             @Override
             protected RevenueReport doInBackground() throws SQLException {
-                return reportsDAO.loadRevenueByBranch(from, to);
+                return reportsBUS.getRevenueByBranch(from, to);
             }
 
             @Override

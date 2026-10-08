@@ -4,7 +4,7 @@
  */
 package view;
 
-import dao.EmployeeDAO;
+import bus.EmployeeBUS;
 import model.Employee;
 
 import javax.swing.*;
@@ -15,10 +15,10 @@ public class LoginFrame extends JFrame {
     private JPasswordField txtPassword;
     private JButton btnLogin;
     private JButton btnCancel;
-    private EmployeeDAO employeeDAO;
+    private EmployeeBUS employeeBUS;
 
     public LoginFrame() {
-        employeeDAO = new EmployeeDAO();
+        employeeBUS = new EmployeeBUS();
         initComponents();
     }
 
@@ -109,7 +109,7 @@ public class LoginFrame extends JFrame {
 
         btnLogin.addActionListener(e -> handleLogin());
         btnCancel.addActionListener(e -> System.exit(0));
-        btnRegister.addActionListener(e -> new RegisterDialog(this, employeeDAO).setVisible(true));
+        btnRegister.addActionListener(e -> new RegisterDialog(this, employeeBUS).setVisible(true));
         getRootPane().setDefaultButton(btnLogin);
     }
 
@@ -180,7 +180,7 @@ public class LoginFrame extends JFrame {
     SwingWorker<Employee, Void> worker = new SwingWorker<>() {
         @Override
         protected Employee doInBackground() throws Exception {
-            return employeeDAO.login(username, password);
+            return employeeBUS.login(username, password);
         }
 
         @Override

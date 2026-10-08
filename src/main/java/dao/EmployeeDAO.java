@@ -50,12 +50,6 @@ public class EmployeeDAO {
             if (!PasswordUtil.verify(password, storedPassword)) {
                 return null;
             }
-            if (!"Active".equalsIgnoreCase(accountStatus)) {
-                if ("Pending".equalsIgnoreCase(accountStatus)) {
-                    throw new SQLException("Tài khoản đang chờ Admin phê duyệt.");
-                }
-                throw new SQLException("Tài khoản chưa được kích hoạt. Vui lòng liên hệ Admin.");
-            }
             if (!PasswordUtil.isHashed(storedPassword)) {
                 try (PreparedStatement update = conn.prepareStatement(
                         "UPDATE Employee SET password = ? WHERE employee_id = ?")) {
@@ -85,11 +79,6 @@ public class EmployeeDAO {
     }
 
     public void register(String fullName, String username, String password, int branchId) throws SQLException {
-        if (fullName == null || fullName.isBlank() || fullName.length() > 100
-                || username == null || !username.matches("[A-Za-z0-9._-]{4,50}")
-                || password == null || password.length() < 8 || branchId <= 0) {
-            throw new IllegalArgumentException("Thông tin đăng ký không hợp lệ.");
-        }
         String sql = "INSERT INTO Employee (branch_id, full_name, role, username, password, account_status) "
                 + "VALUES (?, ?, N'NhanVien', ?, ?, N'Pending')";
         try (Connection connection = DatabaseConnection.getConnection();

@@ -186,6 +186,7 @@ Trước khi chạy ứng dụng, cần chuẩn bị:
 
 - Đăng nhập, đăng xuất và phân quyền theo `Admin`, `BacSi`, `NhanVien`; mật khẩu mới được băm bằng PBKDF2. Tài khoản mẫu có mật khẩu cũ được nâng cấp sau lần đăng nhập thành công.
 - Nhân viên có thể tự đăng ký theo chi nhánh; tài khoản mặc định ở trạng thái chờ duyệt, chỉ đăng nhập được sau khi Admin chuyển trạng thái thành `Active` trong màn hình Nhân viên & tài khoản.
+- Quy trình khám: tạo phiếu ở trạng thái `Đang khám`, thêm các chi tiết thuốc/dịch vụ trong màn hình Chi tiết khám / kê đơn, sau đó chọn phiếu và bấm **Hoàn tất khám**. Phiếu đã hoàn tất không còn nhận chi tiết mới và có thể được lập hóa đơn.
 - Dashboard mặc định cho Admin: số chi nhánh, nhân viên, khách hàng, thú cưng, lịch hẹn hôm nay, doanh thu tháng, hóa đơn chưa trả, cảnh báo tồn thấp, lịch hẹn sắp tới và biểu đồ doanh thu 6 tháng.
 - Giao diện dùng theme xanh dương thống nhất, icon vector vẽ bằng Java2D, sidebar điều hướng, thẻ chỉ số và biểu đồ trực quan; không cần tải thêm thư viện icon.
 - Quản lý chi nhánh, nhân viên/tài khoản, khách hàng, thú cưng, lịch hẹn, phiếu khám, chi tiết kê đơn, thuốc và dịch vụ.
@@ -194,14 +195,27 @@ Trước khi chạy ứng dụng, cần chuẩn bị:
 - Lập hóa đơn từ chi tiết phiếu khám, xác nhận thanh toán, in hóa đơn và báo cáo doanh thu theo chi nhánh.
 - Xuất danh sách, lịch sử, hóa đơn và báo cáo thành tệp Excel `.xlsx`.
 
+## Kiến trúc chương trình
+
+Mã nguồn được tổ chức theo luồng `View → BUS → DAO → Database`, với `Model` là các đối tượng dữ liệu được trao đổi giữa các lớp:
+
+- `view`: giao diện Swing, nhận thao tác và trình bày dữ liệu; không gọi DAO trực tiếp.
+- `bus`: điều phối nghiệp vụ, kiểm tra dữ liệu đầu vào và gọi DAO.
+- `dao`: truy vấn/cập nhật SQL Server và ánh xạ kết quả thành Model.
+- `model`: dữ liệu nghiệp vụ dùng chung giữa BUS, DAO và View.
+- `config` và `util`: cấu hình kết nối, mã hóa mật khẩu, xuất Excel và thành phần dùng chung.
+
+Các BUS nghiệp vụ nằm trong `src/main/java/bus`; ví dụ đăng nhập/đăng ký đi qua `EmployeeBUS`, còn lưu hồ sơ CRUD đi qua `CrudBUS`.
+
 ## 🚀 Hướng dẫn cài đặt và chạy
 
 1. Mở `schema.sql` bằng SQL Server Management Studio và thực thi để tạo `PetClinicDB`, dữ liệu cơ bản và các bảng.
 2. Nếu database đã tồn tại từ phiên bản trước, chạy `account_approval.sql` để thêm trạng thái duyệt tài khoản; với database mới, bước này không cần thiết.
-3. Chạy `photo_columns.sql` một lần để bổ sung cột ảnh nếu database đã được tạo từ trước. Với database mới, file này vẫn an toàn để chạy.
-4. Thực thi `sample_data.sql` để thêm khách hàng, thú cưng, lịch hẹn, hồ sơ khám, hóa đơn, tiêm chủng và giao dịch kho mẫu. Script có thể chạy lại mà không thêm trùng dữ liệu mẫu.
-5. Tạo `db.properties` từ `db.properties.example` trong thư mục dự án; nhập `db.url`, `db.user` và `db.password` của SQL Server.
-6. Chạy `mvn clean compile exec:java` hoặc chạy lớp `com.petclinic.pet.clinic.management.PetClinicManagement` từ NetBeans/IDE.
+3. Với database cũ, chạy `medical_record_status.sql` để bổ sung trạng thái quy trình khám; hóa đơn hiện có sẽ được đánh dấu phiếu đã hoàn tất.
+4. Chạy `photo_columns.sql` một lần để bổ sung cột ảnh nếu database đã được tạo từ trước. Với database mới, file này vẫn an toàn để chạy.
+5. Thực thi `sample_data.sql` để thêm khách hàng, thú cưng, lịch hẹn, hồ sơ khám, hóa đơn, tiêm chủng và giao dịch kho mẫu. Script có thể chạy lại mà không thêm trùng dữ liệu mẫu.
+6. Tạo `db.properties` từ `db.properties.example` trong thư mục dự án; nhập `db.url`, `db.user` và `db.password` của SQL Server.
+7. Chạy `mvn clean compile exec:java` hoặc chạy lớp `com.petclinic.pet.clinic.management.PetClinicManagement` từ NetBeans/IDE.
 
 Trong cửa sổ thêm/cập nhật thú cưng và nhân viên, có thể chọn ảnh JPG, PNG, GIF hoặc BMP (tối đa 5 MB). Ảnh được lưu trong SQL Server và có thể gỡ bỏ khi cập nhật hồ sơ.
 

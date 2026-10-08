@@ -291,7 +291,8 @@ public class MainFrame extends JFrame {
                         dateTime("revisit_date", "Ngày tái khám (có thể trống)", false)),
                 columns(col("record_id", "Mã"), col("pet_id", "Thú cưng"), col("employee_id", "Bác sĩ"),
                         col("branch_id", "Chi nhánh"), col("visit_date", "Ngày khám"), col("diagnosis", "Chẩn đoán"),
-                        col("notes", "Ghi chú"), col("revisit_date", "Ngày tái khám")));
+                        col("notes", "Ghi chú"), col("revisit_date", "Ngày tái khám"),
+                        col("record_status", "Trạng thái khám")));
     }
 
     private ModuleDefinition createMedicalDetailDefinition() {

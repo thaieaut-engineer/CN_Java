@@ -4,7 +4,7 @@
  */
 package view;
 
-import dao.CustomerDAO;
+import bus.CustomerBUS;
 import model.Customer;
 
 import javax.swing.*;
@@ -18,10 +18,10 @@ public class CustomerPanel extends JPanel {
     private DefaultTableModel tableModel;
     private JTextField txtCustomerId, txtFullName, txtPhone, txtAddress;
     private JButton btnAdd, btnUpdate, btnDelete, btnClear;
-    private CustomerDAO customerDAO;
+    private CustomerBUS customerBUS;
 
     public CustomerPanel() {
-        customerDAO = new CustomerDAO();
+        customerBUS = new CustomerBUS();
         initComponents();
         loadData();
     }
@@ -151,11 +151,15 @@ public class CustomerPanel extends JPanel {
 
     public void loadData() {
         tableModel.setRowCount(0);
-        List<Customer> list = customerDAO.getAllCustomers();
-        for (Customer c : list) {
-            tableModel.addRow(new Object[]{
-                c.getCustomerId(), c.getFullName(), c.getPhone(), c.getAddress()
-            });
+        try {
+            List<Customer> list = customerBUS.getAll();
+            for (Customer c : list) {
+                tableModel.addRow(new Object[]{
+                    c.getCustomerId(), c.getFullName(), c.getPhone(), c.getAddress()
+                });
+            }
+        } catch (java.sql.SQLException e) {
+            showError("Không thể tải khách hàng", e);
         }
     }
 
@@ -182,12 +186,13 @@ public class CustomerPanel extends JPanel {
             txtAddress.getText().trim()
         );
 
-        if (customerDAO.addCustomer(c)) {
+        try {
+            customerBUS.create(c);
             JOptionPane.showMessageDialog(this, "Thêm khách hàng thành công!");
             loadData();
             clearForm();
-        } else {
-            JOptionPane.showMessageDialog(this, "Thêm thất bại! Số điện thoại có thể đã bị trùng.", "Lỗi", JOptionPane.ERROR_MESSAGE);
+        } catch (IllegalArgumentException | java.sql.SQLException e) {
+            showError("Không thể thêm khách hàng", e);
         }
     }
 
@@ -204,12 +209,13 @@ public class CustomerPanel extends JPanel {
             txtAddress.getText().trim()
         );
 
-        if (customerDAO.updateCustomer(c)) {
+        try {
+            customerBUS.update(c);
             JOptionPane.showMessageDialog(this, "Cập nhật thành công!");
             loadData();
             clearForm();
-        } else {
-            JOptionPane.showMessageDialog(this, "Cập nhật thất bại!");
+        } catch (IllegalArgumentException | java.sql.SQLException e) {
+            showError("Không thể cập nhật khách hàng", e);
         }
     }
 
@@ -222,14 +228,19 @@ public class CustomerPanel extends JPanel {
         int confirm = JOptionPane.showConfirmDialog(this, "Xóa khách hàng sẽ xóa toàn bộ Thú cưng liên quan. Bạn có chắc chắn muốn xóa?", "Xác nhận xóa", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
             int id = Integer.parseInt(txtCustomerId.getText().trim());
-            if (customerDAO.deleteCustomer(id)) {
+            try {
+                customerBUS.delete(id);
                 JOptionPane.showMessageDialog(this, "Xóa thành công!");
                 loadData();
                 clearForm();
-            } else {
-                JOptionPane.showMessageDialog(this, "Xóa thất bại!");
+            } catch (IllegalArgumentException | java.sql.SQLException e) {
+                showError("Không thể xóa khách hàng", e);
             }
         }
+    }
+
+    private void showError(String title, Exception exception) {
+        JOptionPane.showMessageDialog(this, exception.getMessage(), title, JOptionPane.ERROR_MESSAGE);
     }
 
     private void clearForm() {

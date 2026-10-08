@@ -89,6 +89,9 @@ CREATE TABLE MedicalRecord (
     diagnosis NVARCHAR(MAX),
     notes NVARCHAR(MAX),
     revisit_date DATETIME, -- Ngày hẹn tái khám / tiêm nhắc lại
+    record_status NVARCHAR(20) NOT NULL
+        CONSTRAINT DF_MedicalRecord_Status DEFAULT N'InProgress'
+        CONSTRAINT CK_MedicalRecord_Status CHECK (record_status IN (N'InProgress', N'Completed')),
     CONSTRAINT FK_Record_Pet FOREIGN KEY (pet_id) REFERENCES Pet(pet_id),
     CONSTRAINT FK_Record_Employee FOREIGN KEY (employee_id) REFERENCES Employee(employee_id),
     CONSTRAINT FK_Record_Branch FOREIGN KEY (branch_id) REFERENCES Branch(branch_id)

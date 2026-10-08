@@ -38,7 +38,8 @@ public class InvoiceDAO {
         String sql = "SELECT r.record_id, p.name AS pet_name, "
                 + "CONVERT(varchar(16), r.visit_date, 120) AS visit_time "
                 + "FROM MedicalRecord r JOIN Pet p ON p.pet_id = r.pet_id "
-                + "WHERE EXISTS (SELECT 1 FROM MedicalDetail d WHERE d.record_id = r.record_id) "
+                + "WHERE r.record_status = N'Completed' "
+                + "AND EXISTS (SELECT 1 FROM MedicalDetail d WHERE d.record_id = r.record_id) "
                 + "AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.record_id = r.record_id) "
                 + "ORDER BY r.visit_date DESC";
         List<InvoiceRecordOption> options = new ArrayList<>();
@@ -57,6 +58,8 @@ public class InvoiceDAO {
         String sql = "INSERT INTO Invoice (record_id, total_amount, status, payment_method) "
                 + "SELECT ?, COALESCE(SUM(d.quantity * d.unit_price), 0), N'Unpaid', ? "
                 + "FROM MedicalDetail d WHERE d.record_id = ? "
+                + "AND EXISTS (SELECT 1 FROM MedicalRecord r "
+                + "WHERE r.record_id = ? AND r.record_status = N'Completed') "
                 + "AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.record_id = ?)";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -64,6 +67,7 @@ public class InvoiceDAO {
             statement.setNString(2, paymentMethod);
             statement.setInt(3, recordId);
             statement.setInt(4, recordId);
+            statement.setInt(5, recordId);
             if (statement.executeUpdate() == 0) {
                 throw new SQLException("Không tìm thấy phiếu khám, phiếu chưa có chi tiết hoặc đã có hóa đơn.");
             }

@@ -1,6 +1,6 @@
 package view;
 
-import dao.HistoryDAO;
+import bus.HistoryBUS;
 import model.HistoryEntry;
 import util.ExcelExporter;
 import java.awt.BorderLayout;
@@ -23,7 +23,7 @@ import javax.swing.JTextField;
 import javax.swing.table.DefaultTableModel;
 
 public class HistoryPanel extends JPanel {
-    private final HistoryDAO historyDAO = new HistoryDAO();
+    private final HistoryBUS historyBUS = new HistoryBUS();
     private final JTextField query = new JTextField(24);
     private final DefaultTableModel model = new DefaultTableModel(new String[]{
         "Ngày khám", "Thú cưng", "Loài", "Khách hàng", "Điện thoại", "Chi nhánh", "Bác sĩ", "Chẩn đoán", "Ghi chú", "Tái khám", "Hóa đơn"
@@ -31,7 +31,7 @@ public class HistoryPanel extends JPanel {
         @Override public boolean isCellEditable(int row, int column) { return false; }
     };
     private final JTable table = new JTable(model);
-    private final JLabel status = new JLabel("Nhập thông tin để tra cứu lịch sử.");
+    private final JLabel status = new JLabel("Đang tải lịch sử khám...");
     private final AtomicLong searchVersion = new AtomicLong();
 
     public HistoryPanel() {
@@ -44,9 +44,10 @@ public class HistoryPanel extends JPanel {
         title.setIconTextGap(10);
         JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT));
         controls.setOpaque(false);
-        controls.add(new JLabel("Tên khách, số điện thoại hoặc tên thú cưng:"));
+        controls.add(new JLabel("Tìm tên khách, số điện thoại hoặc thú cưng (để trống để xem tất cả):"));
         controls.add(query);
         UiTheme.styleTextField(query);
+        query.putClientProperty("JTextField.placeholderText", "Để trống để xem toàn bộ lịch sử");
         JButton search = new JButton("Tra cứu");
         JButton export = new JButton("Xuất Excel");
         UiTheme.stylePrimary(search);
@@ -70,20 +71,17 @@ public class HistoryPanel extends JPanel {
         search.addActionListener(event -> search());
         query.addActionListener(event -> search());
         export.addActionListener(event -> export());
+        search();
     }
 
     private void search() {
         String term = query.getText().trim();
-        if (term.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Nhập tên khách hàng, số điện thoại hoặc tên thú cưng.");
-            return;
-        }
         long version = searchVersion.incrementAndGet();
-        status.setText("Đang tra cứu...");
+        status.setText(term.isEmpty() ? "Đang tải toàn bộ lịch sử..." : "Đang tra cứu...");
         new javax.swing.SwingWorker<List<HistoryEntry>, Void>() {
             @Override
             protected List<HistoryEntry> doInBackground() throws SQLException {
-                return historyDAO.search(term);
+                return historyBUS.search(term);
             }
 
             @Override
@@ -98,7 +96,9 @@ public class HistoryPanel extends JPanel {
                         entry.getSpecies(), entry.getCustomerName(), entry.getPhone(), entry.getBranchName(),
                         entry.getDoctor(), entry.getDiagnosis(), entry.getNotes(), entry.getRevisitDate(),
                         entry.getTotalAmount()}));
-                    status.setText(rows.size() + " kết quả");
+                    status.setText(rows.isEmpty()
+                            ? "Không có phiếu khám phù hợp. Nếu đây là dữ liệu mới, hãy tạo phiếu khám hoặc chạy sample_data.sql."
+                            : rows.size() + " kết quả");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     status.setText("Đã hủy tra cứu.");

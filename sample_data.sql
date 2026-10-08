@@ -213,6 +213,11 @@ BEGIN TRY
     )
     GROUP BY record.record_id, source.marker;
 
+    UPDATE medical_record
+    SET record_status = N'Completed'
+    FROM dbo.MedicalRecord AS medical_record
+    JOIN @Records AS source ON medical_record.notes LIKE source.marker + N' |%';
+
     DECLARE @Vaccinations TABLE (
         marker NVARCHAR(100) PRIMARY KEY,
         phone VARCHAR(20) NOT NULL,

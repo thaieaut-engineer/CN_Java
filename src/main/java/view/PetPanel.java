@@ -4,8 +4,8 @@
  */
 package view;
 
-import dao.CustomerDAO;
-import dao.PetDAO;
+import bus.CustomerBUS;
+import bus.PetBUS;
 import model.Customer;
 import model.Pet;
 
@@ -22,12 +22,12 @@ public class PetPanel extends JPanel {
     private JComboBox<Customer> cbCustomer; // Đổi sang JComboBox chứa đối tượng Customer
     private JButton btnAdd, btnUpdate, btnDelete, btnClear;
     
-    private PetDAO petDAO;
-    private CustomerDAO customerDAO;
+    private PetBUS petBUS;
+    private CustomerBUS customerBUS;
 
     public PetPanel() {
-        petDAO = new PetDAO();
-        customerDAO = new CustomerDAO();
+        petBUS = new PetBUS();
+        customerBUS = new CustomerBUS();
         initComponents();
         loadCustomerComboBox();
         loadData();
@@ -133,9 +133,13 @@ public class PetPanel extends JPanel {
 
     private void loadCustomerComboBox() {
         cbCustomer.removeAllItems();
-        List<Customer> customers = customerDAO.getAllCustomers();
-        for (Customer c : customers) {
-            cbCustomer.addItem(c);
+        try {
+            List<Customer> customers = customerBUS.getAll();
+            for (Customer c : customers) {
+                cbCustomer.addItem(c);
+            }
+        } catch (java.sql.SQLException e) {
+            showError("Không thể tải khách hàng", e);
         }
     }
 
@@ -176,11 +180,15 @@ public class PetPanel extends JPanel {
 
     public void loadData() {
         tableModel.setRowCount(0);
-        List<Pet> list = petDAO.getAllPets();
-        for (Pet p : list) {
-            tableModel.addRow(new Object[]{
-                p.getPetId(), p.getCustomerId(), p.getName(), p.getSpecies(), p.getBreed(), p.getAge()
-            });
+        try {
+            List<Pet> list = petBUS.getAll();
+            for (Pet p : list) {
+                tableModel.addRow(new Object[]{
+                    p.getPetId(), p.getCustomerId(), p.getName(), p.getSpecies(), p.getBreed(), p.getAge()
+                });
+            }
+        } catch (java.sql.SQLException e) {
+            showError("Không thể tải thú cưng", e);
         }
     }
 
@@ -228,15 +236,14 @@ public class PetPanel extends JPanel {
                 Integer.parseInt(txtAge.getText().trim())
             );
 
-            if (petDAO.addPet(pet)) {
-                JOptionPane.showMessageDialog(this, "Thêm thành công!");
-                loadData();
-                clearForm();
-            } else {
-                JOptionPane.showMessageDialog(this, "Thêm thất bại!");
-            }
+            petBUS.create(pet);
+            JOptionPane.showMessageDialog(this, "Thêm thành công!");
+            loadData();
+            clearForm();
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Tuổi phải là số nguyên!", "Lỗi nhập liệu", JOptionPane.ERROR_MESSAGE);
+        } catch (IllegalArgumentException | java.sql.SQLException e) {
+            showError("Không thể thêm thú cưng", e);
         }
     }
 
@@ -259,13 +266,14 @@ public class PetPanel extends JPanel {
                 Integer.parseInt(txtAge.getText().trim())
             );
 
-            if (petDAO.updatePet(pet)) {
-                JOptionPane.showMessageDialog(this, "Cập nhật thành công!");
-                loadData();
-                clearForm();
-            }
+            petBUS.update(pet);
+            JOptionPane.showMessageDialog(this, "Cập nhật thành công!");
+            loadData();
+            clearForm();
         } catch (NumberFormatException e) {
             JOptionPane.showMessageDialog(this, "Tuổi phải là số nguyên!");
+        } catch (IllegalArgumentException | java.sql.SQLException e) {
+            showError("Không thể cập nhật thú cưng", e);
         }
     }
 
@@ -278,12 +286,19 @@ public class PetPanel extends JPanel {
         int confirm = JOptionPane.showConfirmDialog(this, "Bạn có chắc chắn muốn xóa thú cưng này?", "Xác nhận", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
             int petId = Integer.parseInt(txtPetId.getText().trim());
-            if (petDAO.deletePet(petId)) {
+            try {
+                petBUS.delete(petId);
                 JOptionPane.showMessageDialog(this, "Xóa thành công!");
                 loadData();
                 clearForm();
+            } catch (IllegalArgumentException | java.sql.SQLException e) {
+                showError("Không thể xóa thú cưng", e);
             }
         }
+    }
+
+    private void showError(String title, Exception exception) {
+        JOptionPane.showMessageDialog(this, exception.getMessage(), title, JOptionPane.ERROR_MESSAGE);
     }
 
     private void clearForm() {

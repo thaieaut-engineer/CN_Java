@@ -1,6 +1,6 @@
 package view;
 
-import dao.CrudDAO;
+import bus.CrudBUS;
 import model.ModuleDefinition;
 import model.ModuleDefinition.Column;
 import model.ModuleDefinition.Field;
@@ -60,10 +60,11 @@ import javax.swing.table.TableRowSorter;
 public class CrudPanel extends JPanel {
     private static final int MAX_PHOTO_BYTES = 5 * 1024 * 1024;
     private final ModuleDefinition definition;
-    private final CrudDAO crudDAO = new CrudDAO();
+    private final CrudBUS crudBUS = new CrudBUS();
     private final DefaultTableModel tableModel;
     private final JTable table;
     private final JButton updateButton;
+    private final JButton completeExamButton;
     private final JLabel dataStatus = new JLabel("Đang tải dữ liệu...");
     private final AtomicLong loadVersion = new AtomicLong();
 
@@ -82,6 +83,7 @@ public class CrudPanel extends JPanel {
         JButton add = new JButton("Thêm");
         updateButton = new JButton("Cập nhật");
         JButton delete = new JButton("Xóa");
+        completeExamButton = new JButton("Hoàn tất khám");
 
         List<String> headers = new ArrayList<>();
         for (Column column : definition.getColumns()) {
@@ -113,6 +115,7 @@ public class CrudPanel extends JPanel {
         JButton export = new JButton("Xuất Excel");
         UiTheme.stylePrimary(add);
         UiTheme.styleSecondary(updateButton);
+        UiTheme.stylePrimary(completeExamButton);
         UiTheme.styleDanger(delete);
         UiTheme.styleSecondary(reload);
         UiTheme.styleSecondary(export);
@@ -126,6 +129,10 @@ public class CrudPanel extends JPanel {
         tableActions.setOpaque(false);
         tableActions.add(add);
         tableActions.add(updateButton);
+        if (isMedicalRecordPanel()) {
+            tableActions.add(completeExamButton);
+            completeExamButton.setEnabled(false);
+        }
         tableActions.add(delete);
         tableActions.add(search);
         tableActions.add(reload);
@@ -140,6 +147,7 @@ public class CrudPanel extends JPanel {
         add.addActionListener(event -> showEditor(true));
         updateButton.addActionListener(event -> showEditor(false));
         delete.addActionListener(event -> deleteSelected());
+        completeExamButton.addActionListener(event -> completeSelectedExam());
         reload.addActionListener(event -> loadData());
         export.addActionListener(event -> export());
         table.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -161,8 +169,7 @@ public class CrudPanel extends JPanel {
                 }
             }
         });
-        table.getSelectionModel().addListSelectionListener(event ->
-                updateButton.setEnabled(table.getSelectedRow() >= 0));
+        table.getSelectionModel().addListSelectionListener(event -> updateSelectionActions());
         updateButton.setEnabled(false);
         table.getInputMap().put(javax.swing.KeyStroke.getKeyStroke("ENTER"), "edit-selected-row");
         table.getActionMap().put("edit-selected-row", new javax.swing.AbstractAction() {
@@ -197,7 +204,7 @@ public class CrudPanel extends JPanel {
         new javax.swing.SwingWorker<List<CrudRow>, Void>() {
             @Override
             protected List<CrudRow> doInBackground() throws SQLException {
-                return crudDAO.findAll(definition);
+                return crudBUS.getAll(definition);
             }
 
             @Override
@@ -209,7 +216,13 @@ public class CrudPanel extends JPanel {
                     List<CrudRow> rows = get();
                     tableModel.setRowCount(0);
                     for (CrudRow row : rows) {
-                        tableModel.addRow(row.getValues().toArray());
+                        Object[] values = row.getValues().toArray();
+                        int statusColumn = columnIndex("record_status");
+                        if (statusColumn >= 0 && values[statusColumn] != null) {
+                            values[statusColumn] = "Completed".equals(values[statusColumn].toString())
+                                    ? "Đã hoàn tất" : "Đang khám";
+                        }
+                        tableModel.addRow(values);
                     }
                     dataStatus.setText(rows.size() + " bản ghi");
                 } catch (InterruptedException e) {
@@ -232,6 +245,76 @@ public class CrudPanel extends JPanel {
             }
         }
         return -1;
+    }
+
+    private boolean isMedicalRecordPanel() {
+        return "MedicalRecord".equals(definition.getTableName());
+    }
+
+    private void updateSelectionActions() {
+        int selectedRow = table.getSelectedRow();
+        updateButton.setEnabled(selectedRow >= 0);
+        if (!isMedicalRecordPanel() || selectedRow < 0) {
+            completeExamButton.setEnabled(false);
+            return;
+        }
+        int modelRow = table.convertRowIndexToModel(selectedRow);
+        int statusColumn = columnIndex("record_status");
+        completeExamButton.setEnabled(statusColumn >= 0
+                && "Đang khám".equals(tableModel.getValueAt(modelRow, statusColumn)));
+    }
+
+    private void completeSelectedExam() {
+        int viewRow = table.getSelectedRow();
+        if (viewRow < 0) {
+            JOptionPane.showMessageDialog(this, "Hãy chọn phiếu khám cần hoàn tất.");
+            return;
+        }
+        int modelRow = table.convertRowIndexToModel(viewRow);
+        int statusColumn = columnIndex("record_status");
+        if (statusColumn < 0 || !"Đang khám".equals(tableModel.getValueAt(modelRow, statusColumn))) {
+            JOptionPane.showMessageDialog(this, "Phiếu khám này đã hoàn tất hoặc không còn trạng thái phù hợp.");
+            loadData();
+            return;
+        }
+        if (JOptionPane.showConfirmDialog(this,
+                "Xác nhận kết thúc khám cho phiếu #" + tableModel.getValueAt(modelRow, 0)
+                        + "? Sau khi hoàn tất sẽ không thể thêm hoặc sửa chi tiết kê đơn.",
+                "Hoàn tất khám", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) {
+            return;
+        }
+        Object recordId = tableModel.getValueAt(modelRow, 0);
+        completeExamButton.setEnabled(false);
+        new javax.swing.SwingWorker<Integer, Void>() {
+            @Override
+            protected Integer doInBackground() throws SQLException {
+                return crudBUS.completeMedicalRecord(recordId);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    if (get() != 1) {
+                        showError("Không thể hoàn tất phiếu khám",
+                                new SQLException("Phiếu khám đã được hoàn tất hoặc không còn tồn tại."));
+                        loadData();
+                        return;
+                    }
+                    JOptionPane.showMessageDialog(CrudPanel.this,
+                            "Đã hoàn tất khám. Phiếu có thể được chọn để lập hóa đơn.",
+                            "Hoàn tất khám", JOptionPane.INFORMATION_MESSAGE);
+                    loadData();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    showError("Không thể hoàn tất phiếu khám", e);
+                    updateSelectionActions();
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    showError("Không thể hoàn tất phiếu khám", cause);
+                    updateSelectionActions();
+                }
+            }
+        }.execute();
     }
 
     private void showEditor(boolean insert) {
@@ -376,7 +459,7 @@ public class CrudPanel extends JPanel {
             JComboBox<ComboOption> combo = new JComboBox<>();
             combo.addItem(new ComboOption(null,
                     field.isRequired() ? "— Vui lòng chọn —" : "— Không chọn —"));
-            for (LookupOption option : crudDAO.findOptions(field)) {
+            for (LookupOption option : crudBUS.getOptions(definition, field)) {
                 combo.addItem(new ComboOption(option.getValue(),
                         option.getLabel() + "  ·  #" + option.getValue()));
             }
@@ -466,9 +549,9 @@ public class CrudPanel extends JPanel {
             @Override
             protected Void doInBackground() throws SQLException {
                 if (insert) {
-                    crudDAO.insert(definition, values, photo, photoColumnAvailable);
+                    crudBUS.create(definition, values, photo, photoColumnAvailable);
                 } else {
-                    crudDAO.update(definition, id, values, photo, photoChanged);
+                    crudBUS.update(definition, id, values, photo, photoChanged);
                 }
                 return null;
             }
@@ -585,7 +668,7 @@ public class CrudPanel extends JPanel {
 
     private boolean isPhotoColumnAvailable() {
         try {
-            return crudDAO.hasPhotoColumn(definition);
+            return crudBUS.hasPhotoColumn(definition);
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this,
                     "Cửa sổ vẫn mở được nhưng chức năng ảnh chưa sẵn sàng.\n"
@@ -597,7 +680,7 @@ public class CrudPanel extends JPanel {
     }
 
     private byte[] loadPhoto(Object id) throws SQLException {
-        return crudDAO.findPhoto(definition, id);
+        return crudBUS.getPhoto(definition, id);
     }
 
     private void deleteSelected() {
@@ -616,7 +699,7 @@ public class CrudPanel extends JPanel {
         new javax.swing.SwingWorker<Integer, Void>() {
             @Override
             protected Integer doInBackground() throws SQLException {
-                return crudDAO.delete(definition, id);
+                return crudBUS.delete(definition, id);
             }
 
             @Override

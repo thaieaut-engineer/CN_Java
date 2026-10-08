@@ -1,6 +1,6 @@
 package view;
 
-import dao.EmployeeDAO;
+import bus.EmployeeBUS;
 import model.Branch;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
@@ -21,7 +21,7 @@ import javax.swing.JTextField;
 import javax.swing.SwingWorker;
 
 public class RegisterDialog extends JDialog {
-    private final EmployeeDAO employeeDAO;
+    private final EmployeeBUS employeeBUS;
     private final JTextField fullName = new JTextField(22);
     private final JTextField username = new JTextField(22);
     private final JPasswordField password = new JPasswordField(22);
@@ -31,9 +31,9 @@ public class RegisterDialog extends JDialog {
     private final JButton cancel = new JButton("Hủy");
     private final JLabel status = new JLabel("Đang tải danh sách chi nhánh...");
 
-    public RegisterDialog(LoginFrame owner, EmployeeDAO employeeDAO) {
+    public RegisterDialog(LoginFrame owner, EmployeeBUS employeeBUS) {
         super(owner, "Đăng ký tài khoản nhân viên", ModalityType.APPLICATION_MODAL);
-        this.employeeDAO = employeeDAO;
+        this.employeeBUS = employeeBUS;
         buildForm();
         loadBranches();
     }
@@ -112,7 +112,7 @@ public class RegisterDialog extends JDialog {
         new SwingWorker<List<Branch>, Void>() {
             @Override
             protected List<Branch> doInBackground() throws Exception {
-                return employeeDAO.findBranches();
+                return employeeBUS.getBranches();
             }
 
             @Override
@@ -156,8 +156,8 @@ public class RegisterDialog extends JDialog {
             showValidationError("Tên đăng nhập phải dài 4–50 ký tự, chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.");
             return;
         }
-        if (plainPassword.length() < 8) {
-            showValidationError("Mật khẩu phải có ít nhất 8 ký tự.");
+        if (plainPassword.length() < 6) {
+            showValidationError("Mật khẩu phải có ít nhất 6 ký tự.");
             return;
         }
         if (!plainPassword.equals(confirmation)) {
@@ -174,7 +174,7 @@ public class RegisterDialog extends JDialog {
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
-                employeeDAO.register(name, account, plainPassword, selectedBranch.getBranchId());
+                employeeBUS.register(name, account, plainPassword, selectedBranch.getBranchId());
                 return null;
             }
 

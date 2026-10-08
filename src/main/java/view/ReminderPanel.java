@@ -1,6 +1,6 @@
 package view;
 
-import dao.ReminderDAO;
+import bus.ReminderBUS;
 import model.ReminderEntry;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
@@ -18,7 +18,7 @@ import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
 
 public class ReminderPanel extends JPanel {
-    private final ReminderDAO reminderDAO = new ReminderDAO();
+    private final ReminderBUS reminderBUS = new ReminderBUS();
     private final DefaultTableModel model = new DefaultTableModel(
             new String[]{"Loại nhắc", "Ngày đến hạn", "Thú cưng", "Khách hàng", "Điện thoại", "Chi nhánh", "Nội dung"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -71,7 +71,7 @@ public class ReminderPanel extends JPanel {
         new javax.swing.SwingWorker<List<ReminderEntry>, Void>() {
             @Override
             protected List<ReminderEntry> doInBackground() throws SQLException {
-                return reminderDAO.findDueReminders();
+                return reminderBUS.getDueReminders();
             }
 
             @Override

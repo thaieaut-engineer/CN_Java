@@ -1,6 +1,6 @@
 package view;
 
-import dao.InvoiceDAO;
+import bus.InvoiceBUS;
 import model.Employee;
 import model.InvoiceLine;
 import model.InvoicePrintData;
@@ -32,7 +32,7 @@ import javax.swing.JTextArea;
 import javax.swing.table.DefaultTableModel;
 
 public class InvoicePanel extends JPanel {
-    private final InvoiceDAO invoiceDAO = new InvoiceDAO();
+    private final InvoiceBUS invoiceBUS = new InvoiceBUS();
     private final DefaultTableModel model = new DefaultTableModel(new String[]{
         "Mã HĐ", "Mã phiếu khám", "Thú cưng", "Khách hàng", "Chi nhánh", "Ngày tạo", "Tổng tiền", "Trạng thái", "Thanh toán"
     }, 0) {
@@ -98,7 +98,7 @@ public class InvoicePanel extends JPanel {
         JComboBox<InvoiceRecordOption> record = new JComboBox<>();
         record.addItem(new InvoiceRecordOption(0, "— Chọn phiếu khám —", null));
         try {
-            for (InvoiceRecordOption option : invoiceDAO.findInvoiceCandidates()) {
+            for (InvoiceRecordOption option : invoiceBUS.getCandidates()) {
                 record.addItem(option);
             }
         } catch (SQLException e) {
@@ -150,7 +150,7 @@ public class InvoicePanel extends JPanel {
 
     private void createInvoice(int id, String paymentMethod) {
         try {
-            invoiceDAO.createInvoice(id, paymentMethod.trim());
+            invoiceBUS.create(id, paymentMethod.trim());
             loadData();
             JOptionPane.showMessageDialog(this, "Đã tạo hóa đơn ở trạng thái chưa thanh toán.");
         } catch (SQLException e) {
@@ -171,7 +171,7 @@ public class InvoicePanel extends JPanel {
                 java.util.Arrays.asList(methods).contains(currentMethod) ? currentMethod : methods[0]);
         if (method == null) return;
         try {
-            invoiceDAO.markPaid(Integer.parseInt(model.getValueAt(row, 0).toString()), method.toString());
+            invoiceBUS.markPaid(Integer.parseInt(model.getValueAt(row, 0).toString()), method.toString());
             loadData();
         } catch (SQLException e) {
             showError(e);
@@ -186,7 +186,7 @@ public class InvoicePanel extends JPanel {
         }
         int invoiceId = Integer.parseInt(model.getValueAt(row, 0).toString());
         try {
-            InvoicePrintData data = invoiceDAO.findPrintData(invoiceId);
+            InvoicePrintData data = invoiceBUS.getPrintData(invoiceId);
             StringBuilder receipt = new StringBuilder("PHÒNG KHÁM THÚ Y PET CLINIC\n")
                     .append("Chi nhánh: ").append(data.getBranchName()).append('\n')
                     .append("HÓA ĐƠN #").append(data.getInvoiceId()).append('\n')
@@ -223,7 +223,7 @@ public class InvoicePanel extends JPanel {
         new javax.swing.SwingWorker<List<InvoiceSummary>, Void>() {
             @Override
             protected List<InvoiceSummary> doInBackground() throws SQLException {
-                return invoiceDAO.findInvoices();
+                return invoiceBUS.getInvoices();
             }
 
             @Override

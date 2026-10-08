@@ -1,6 +1,6 @@
 package view;
 
-import dao.DashboardDAO;
+import bus.DashboardBUS;
 import model.DashboardData;
 import model.Employee;
 import java.awt.BorderLayout;
@@ -29,7 +29,7 @@ import javax.swing.table.DefaultTableModel;
 
 public class DashboardPanel extends JPanel {
     private final Employee employee;
-    private final DashboardDAO dashboardDAO = new DashboardDAO();
+    private final DashboardBUS dashboardBUS = new DashboardBUS();
     private final JLabel branchesValue = new JLabel("—");
     private final JLabel employeesValue = new JLabel("—");
     private final JLabel customersValue = new JLabel("—");
@@ -160,7 +160,7 @@ public class DashboardPanel extends JPanel {
         new SwingWorker<DashboardData, Void>() {
             @Override
             protected DashboardData doInBackground() throws Exception {
-                return dashboardDAO.loadDashboard();
+                return dashboardBUS.getDashboard();
             }
 
             @Override

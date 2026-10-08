@@ -41,7 +41,7 @@ public class CrudDAO {
         return rows;
     }
 
-    public List<LookupOption> findOptions(Field field) throws SQLException {
+    public List<LookupOption> findOptions(ModuleDefinition definition, Field field) throws SQLException {
         LookupSpec lookup = LookupSpec.forField(field.getName());
         if (lookup == null) {
             return List.of();
@@ -55,6 +55,9 @@ public class CrudDAO {
         }
         String sql = "SELECT lookup_row." + lookup.idColumn + " AS lookup_id, "
                 + label + " AS lookup_label FROM " + source
+                + ("MedicalDetail".equals(definition.getTableName()) && "record_id".equals(field.getName())
+                        ? " WHERE lookup_row.record_status = N'InProgress' "
+                        : " ")
                 + " ORDER BY lookup_row." + lookup.idColumn + " DESC";
         List<LookupOption> options = new ArrayList<>();
         try (Connection connection = DatabaseConnection.getConnection();
@@ -68,6 +71,16 @@ public class CrudDAO {
         return options;
     }
 
+    public int completeMedicalRecord(Object recordId) throws SQLException {
+        String sql = "UPDATE dbo.MedicalRecord SET record_status = N'Completed' "
+                + "WHERE record_id = ? AND record_status = N'InProgress'";
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, recordId);
+            return statement.executeUpdate();
+        }
+    }
+
     public void insert(ModuleDefinition definition, Map<Field, Object> values, byte[] photo,
             boolean photoColumnAvailable) throws SQLException {
         List<String> columns = new ArrayList<>();
@@ -75,16 +88,32 @@ public class CrudDAO {
         if (photoColumnAvailable) {
             columns.add("photo");
         }
+        boolean medicalDetail = "MedicalDetail".equals(definition.getTableName());
         String sql = "INSERT INTO dbo." + identifier(definition.getTableName())
-                + " (" + String.join(", ", columns) + ") VALUES ("
-                + String.join(", ", java.util.Collections.nCopies(columns.size(), "?")) + ")";
+                + " (" + String.join(", ", columns) + ") "
+                + (medicalDetail ? "SELECT " : "VALUES (")
+                + String.join(", ", java.util.Collections.nCopies(columns.size(), "?"))
+                + (medicalDetail ? " WHERE EXISTS (SELECT 1 FROM dbo.MedicalRecord "
+                        + "WHERE record_id = ? AND record_status = N'InProgress')" : ")");
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             bind(statement, values);
             if (photoColumnAvailable) {
                 statement.setBytes(values.size() + 1, photo);
             }
-            statement.executeUpdate();
+            if (medicalDetail) {
+                Object recordId = values.entrySet().stream()
+                        .filter(entry -> "record_id".equals(entry.getKey().getName()))
+                        .map(Map.Entry::getValue)
+                        .findFirst()
+                        .orElseThrow(() -> new SQLException("Hãy chọn phiếu khám đang thực hiện."));
+                statement.setObject(values.size() + 1, recordId);
+                if (statement.executeUpdate() == 0) {
+                    throw new SQLException("Không thể thêm chi tiết: phiếu khám đã hoàn tất.");
+                }
+            } else {
+                statement.executeUpdate();
+            }
         }
     }
 
@@ -98,9 +127,27 @@ public class CrudDAO {
         if (assignments.isEmpty()) {
             return;
         }
-        String sql = "UPDATE dbo." + identifier(definition.getTableName()) + " SET "
-                + String.join(", ", assignments) + " WHERE "
-                + identifier(definition.getIdColumn()) + " = ?";
+        boolean medicalDetail = "MedicalDetail".equals(definition.getTableName());
+        Object targetRecordId = null;
+        if (medicalDetail) {
+            targetRecordId = values.entrySet().stream()
+                    .filter(entry -> "record_id".equals(entry.getKey().getName()))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElseThrow(() -> new SQLException("Hãy chọn phiếu khám đang thực hiện."));
+        }
+        String sql = medicalDetail
+                ? "UPDATE detail_row SET " + String.join(", ", assignments)
+                        + " FROM dbo.MedicalDetail AS detail_row WHERE detail_row.detail_id = ? "
+                        + "AND EXISTS (SELECT 1 FROM dbo.MedicalRecord AS record_row "
+                        + "WHERE record_row.record_id = detail_row.record_id "
+                        + "AND record_row.record_status = N'InProgress') "
+                        + "AND EXISTS (SELECT 1 FROM dbo.MedicalRecord AS target_record "
+                        + "WHERE target_record.record_id = ? "
+                        + "AND target_record.record_status = N'InProgress')"
+                : "UPDATE dbo." + identifier(definition.getTableName()) + " SET "
+                        + String.join(", ", assignments) + " WHERE "
+                        + identifier(definition.getIdColumn()) + " = ?";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             bind(statement, values);
@@ -109,17 +156,33 @@ public class CrudDAO {
                 statement.setBytes(nextIndex++, photo);
             }
             statement.setObject(nextIndex, id);
-            statement.executeUpdate();
+            if (medicalDetail) {
+                statement.setObject(nextIndex + 1, targetRecordId);
+            }
+            int changed = statement.executeUpdate();
+            if (medicalDetail && changed == 0) {
+                throw new SQLException("Không thể sửa chi tiết: phiếu khám đã hoàn tất hoặc chi tiết không còn tồn tại.");
+            }
         }
     }
 
     public int delete(ModuleDefinition definition, Object id) throws SQLException {
-        String sql = "DELETE FROM dbo." + identifier(definition.getTableName())
-                + " WHERE " + identifier(definition.getIdColumn()) + " = ?";
+        boolean medicalDetail = "MedicalDetail".equals(definition.getTableName());
+        String sql = medicalDetail
+                ? "DELETE detail_row FROM dbo.MedicalDetail AS detail_row WHERE detail_row.detail_id = ? "
+                        + "AND EXISTS (SELECT 1 FROM dbo.MedicalRecord AS record_row "
+                        + "WHERE record_row.record_id = detail_row.record_id "
+                        + "AND record_row.record_status = N'InProgress')"
+                : "DELETE FROM dbo." + identifier(definition.getTableName())
+                        + " WHERE " + identifier(definition.getIdColumn()) + " = ?";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, id);
-            return statement.executeUpdate();
+            int changed = statement.executeUpdate();
+            if (medicalDetail && changed == 0) {
+                throw new SQLException("Không thể xóa chi tiết của phiếu khám đã hoàn tất.");
+            }
+            return changed;
         }
     }
 

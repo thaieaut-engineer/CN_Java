@@ -1,6 +1,6 @@
 package view;
 
-import dao.InventoryDAO;
+import bus.InventoryBUS;
 import model.Employee;
 import model.InventoryMovement;
 import model.StockOption;
@@ -33,7 +33,7 @@ import javax.swing.table.DefaultTableModel;
 
 public class InventoryPanel extends JPanel {
     private final Employee employee;
-    private final InventoryDAO inventoryDAO = new InventoryDAO();
+    private final InventoryBUS inventoryBUS = new InventoryBUS();
     private final DefaultTableModel model = new DefaultTableModel(
             new String[]{"Loại", "Ngày", "Mã thuốc/dịch vụ", "Tên", "Số lượng", "Đơn giá nhập", "Nhân viên", "Ghi chú"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -94,7 +94,7 @@ public class InventoryPanel extends JPanel {
         JComboBox<StockOption> service = new JComboBox<>();
         service.addItem(new StockOption(0, "— Chọn thuốc / vắc-xin —", 0));
         try {
-            inventoryDAO.findStockOptions().forEach(service::addItem);
+            inventoryBUS.getStockOptions().forEach(service::addItem);
         } catch (SQLException e) {
             showError(e);
             return;
@@ -164,9 +164,9 @@ public class InventoryPanel extends JPanel {
                 @Override
                 protected Void doInBackground() throws SQLException {
                     if (incoming) {
-                        inventoryDAO.receive(serviceId, employee.getEmployeeId(), amount, price);
+                        inventoryBUS.receive(serviceId, employee.getEmployeeId(), amount, price);
                     } else {
-                        inventoryDAO.issue(serviceId, employee.getEmployeeId(), amount, notesText.trim());
+                        inventoryBUS.issue(serviceId, employee.getEmployeeId(), amount, notesText.trim());
                     }
                     return null;
                 }
@@ -201,7 +201,7 @@ public class InventoryPanel extends JPanel {
         new javax.swing.SwingWorker<List<InventoryMovement>, Void>() {
             @Override
             protected List<InventoryMovement> doInBackground() throws SQLException {
-                return inventoryDAO.findMovements();
+                return inventoryBUS.getMovements();
             }
 
             @Override
