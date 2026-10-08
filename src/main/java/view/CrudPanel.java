@@ -1,10 +1,12 @@
 package view;
 
-import config.DatabaseConnection;
+import dao.CrudDAO;
 import model.ModuleDefinition;
 import model.ModuleDefinition.Column;
 import model.ModuleDefinition.Field;
 import model.ModuleDefinition.ValueType;
+import model.LookupOption;
+import model.CrudRow;
 import util.ExcelExporter;
 import util.PasswordUtil;
 import java.awt.BorderLayout;
@@ -20,9 +22,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -60,15 +59,8 @@ import javax.swing.table.TableRowSorter;
 
 public class CrudPanel extends JPanel {
     private static final int MAX_PHOTO_BYTES = 5 * 1024 * 1024;
-    private static final Map<String, LookupSpec> LOOKUPS = Map.of(
-            "branch_id", new LookupSpec("Branch", "branch_id", "name"),
-            "customer_id", new LookupSpec("Customer", "customer_id", "full_name"),
-            "pet_id", new LookupSpec("Pet", "pet_id", "name"),
-            "employee_id", new LookupSpec("Employee", "employee_id", "full_name"),
-            "service_id", new LookupSpec("Service", "service_id", "name"),
-            "record_id", new LookupSpec("MedicalRecord", "record_id", "record_id"));
-
     private final ModuleDefinition definition;
+    private final CrudDAO crudDAO = new CrudDAO();
     private final DefaultTableModel tableModel;
     private final JTable table;
     private final JButton updateButton;
@@ -200,29 +192,12 @@ public class CrudPanel extends JPanel {
     }
 
     private void loadData() {
-        String columns = definition.getColumns().stream()
-                .map(column -> "data_row." + column.getName())
-                .reduce((left, right) -> left + ", " + right).orElseThrow();
-        String sql = "SELECT " + columns + " FROM dbo." + definition.getTableName() + " AS data_row"
-                + " ORDER BY data_row." + definition.getIdColumn() + " DESC";
         long version = loadVersion.incrementAndGet();
         dataStatus.setText("Đang tải dữ liệu...");
-        new javax.swing.SwingWorker<List<Object[]>, Void>() {
+        new javax.swing.SwingWorker<List<CrudRow>, Void>() {
             @Override
-            protected List<Object[]> doInBackground() throws SQLException {
-                List<Object[]> rows = new ArrayList<>();
-                try (Connection connection = DatabaseConnection.getConnection();
-                     PreparedStatement statement = connection.prepareStatement(sql);
-                     ResultSet results = statement.executeQuery()) {
-                    while (results.next()) {
-                        Object[] row = new Object[definition.getColumns().size()];
-                        for (int column = 0; column < row.length; column++) {
-                            row[column] = results.getObject(definition.getColumns().get(column).getName());
-                        }
-                        rows.add(row);
-                    }
-                }
-                return rows;
+            protected List<CrudRow> doInBackground() throws SQLException {
+                return crudDAO.findAll(definition);
             }
 
             @Override
@@ -231,10 +206,10 @@ public class CrudPanel extends JPanel {
                     return;
                 }
                 try {
-                    List<Object[]> rows = get();
+                    List<CrudRow> rows = get();
                     tableModel.setRowCount(0);
-                    for (Object[] row : rows) {
-                        tableModel.addRow(row);
+                    for (CrudRow row : rows) {
+                        tableModel.addRow(row.getValues().toArray());
                     }
                     dataStatus.setText(rows.size() + " bản ghi");
                 } catch (InterruptedException e) {
@@ -397,29 +372,13 @@ public class CrudPanel extends JPanel {
     }
 
     private JComboBox<ComboOption> createChoices(Field field) throws SQLException {
-        LookupSpec lookup = LOOKUPS.get(field.getName());
-        if (lookup != null) {
+        if (isLookupField(field.getName())) {
             JComboBox<ComboOption> combo = new JComboBox<>();
             combo.addItem(new ComboOption(null,
                     field.isRequired() ? "— Vui lòng chọn —" : "— Không chọn —"));
-            String source = "dbo." + lookup.tableName + " AS lookup_row";
-            String labelExpression = "lookup_row." + lookup.labelColumn;
-            if ("record_id".equals(field.getName())) {
-                source += " LEFT JOIN dbo.Pet AS related_pet ON related_pet.pet_id = lookup_row.pet_id";
-                labelExpression = "CONCAT(N'Phiếu khám #', lookup_row.record_id, N' - ', "
-                        + "COALESCE(related_pet.name, N'Chưa rõ thú cưng'))";
-            }
-            String sql = "SELECT lookup_row." + lookup.idColumn + " AS lookup_id, "
-                    + labelExpression + " AS lookup_label FROM " + source
-                    + " ORDER BY lookup_row." + lookup.idColumn + " DESC";
-            try (Connection connection = DatabaseConnection.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(sql);
-                 ResultSet results = statement.executeQuery()) {
-                while (results.next()) {
-                    Object value = results.getObject("lookup_id");
-                    String label = results.getString("lookup_label");
-                    combo.addItem(new ComboOption(value, label + "  ·  #" + value));
-                }
+            for (LookupOption option : crudDAO.findOptions(field)) {
+                combo.addItem(new ComboOption(option.getValue(),
+                        option.getLabel() + "  ·  #" + option.getValue()));
             }
             return combo;
         }
@@ -427,6 +386,9 @@ public class CrudPanel extends JPanel {
         List<ComboOption> options = switch (field.getName()) {
             case "role" -> List.of(new ComboOption("Admin", "Quản trị viên"),
                     new ComboOption("BacSi", "Bác sĩ"), new ComboOption("NhanVien", "Nhân viên"));
+            case "account_status" -> List.of(new ComboOption("Pending", "Chờ Admin duyệt"),
+                    new ComboOption("Active", "Đã duyệt / Hoạt động"),
+                    new ComboOption("Rejected", "Từ chối"));
             case "status" -> List.of(new ComboOption("Pending", "Chờ xác nhận"),
                     new ComboOption("Confirmed", "Đã xác nhận"), new ComboOption("Completed", "Hoàn thành"),
                     new ComboOption("Cancelled", "Đã hủy"));
@@ -455,6 +417,11 @@ public class CrudPanel extends JPanel {
             combo.setEditable(true);
         }
         return combo;
+    }
+
+    private boolean isLookupField(String fieldName) {
+        return List.of("branch_id", "customer_id", "pet_id", "employee_id", "service_id", "record_id")
+                .contains(fieldName);
     }
 
     private void setInputValue(JComponent input, Object value) {
@@ -499,9 +466,9 @@ public class CrudPanel extends JPanel {
             @Override
             protected Void doInBackground() throws SQLException {
                 if (insert) {
-                    insert(values, photo, photoColumnAvailable);
+                    crudDAO.insert(definition, values, photo, photoColumnAvailable);
                 } else {
-                    update(id, values, photo, photoChanged);
+                    crudDAO.update(definition, id, values, photo, photoChanged);
                 }
                 return null;
             }
@@ -592,6 +559,13 @@ public class CrudPanel extends JPanel {
                         }
                         throw new IllegalArgumentException("Trạng thái phải là Pending, Confirmed, Completed hoặc Cancelled.");
                     }
+                    if ("account_status".equals(field.getName())) {
+                        for (String accountStatus : List.of("Pending", "Active", "Rejected")) {
+                            if (value.equalsIgnoreCase(accountStatus)) return accountStatus;
+                        }
+                        throw new IllegalArgumentException(
+                                "Trạng thái tài khoản phải là Pending, Active hoặc Rejected.");
+                    }
                     if ("type".equals(field.getName())) {
                         for (String type : List.of("KhamBenh", "Spa", "TiemPhong", "Thuoc")) {
                             if (value.equalsIgnoreCase(type)) return type;
@@ -605,61 +579,13 @@ public class CrudPanel extends JPanel {
         }
     }
 
-    private void insert(Map<Field, Object> values, byte[] photo, boolean photoColumnAvailable) throws SQLException {
-        List<String> names = new ArrayList<>();
-        values.keySet().forEach(field -> names.add(field.getName()));
-        if (photoColumnAvailable) {
-            names.add("photo");
-        }
-        String placeholders = String.join(", ", java.util.Collections.nCopies(names.size(), "?"));
-        String sql = "INSERT INTO " + definition.getTableName() + " (" + String.join(", ", names)
-                + ") VALUES (" + placeholders + ")";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            bind(statement, values);
-            if (photoColumnAvailable) {
-                statement.setBytes(values.size() + 1, photo);
-            }
-            statement.executeUpdate();
-        }
-    }
-
-    private void update(Object id, Map<Field, Object> values, byte[] photo,
-            boolean photoChanged) throws SQLException {
-        List<String> assignments = new ArrayList<>();
-        values.keySet().forEach(field -> assignments.add(field.getName() + " = ?"));
-        if (photoChanged) {
-            assignments.add("photo = ?");
-        }
-        if (assignments.isEmpty()) {
-            return;
-        }
-        String sql = "UPDATE " + definition.getTableName() + " SET " + assignments
-                .stream().reduce((left, right) -> left + ", " + right).orElseThrow()
-                + " WHERE " + definition.getIdColumn() + " = ?";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            bind(statement, values);
-            int nextIndex = values.size() + 1;
-            if (photoChanged) {
-                statement.setBytes(nextIndex++, photo);
-            }
-            statement.setObject(nextIndex, id);
-            statement.executeUpdate();
-        }
-    }
-
     private boolean hasPhotoField() {
         return "Pet".equals(definition.getTableName()) || "Employee".equals(definition.getTableName());
     }
 
     private boolean isPhotoColumnAvailable() {
-        String sql = "SELECT data_row.photo FROM dbo." + definition.getTableName()
-                + " AS data_row WHERE 1 = 0";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeQuery().close();
-            return true;
+        try {
+            return crudDAO.hasPhotoColumn(definition);
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this,
                     "Cửa sổ vẫn mở được nhưng chức năng ảnh chưa sẵn sàng.\n"
@@ -671,22 +597,7 @@ public class CrudPanel extends JPanel {
     }
 
     private byte[] loadPhoto(Object id) throws SQLException {
-        String sql = "SELECT data_row.photo FROM dbo." + definition.getTableName()
-                + " AS data_row WHERE data_row." + definition.getIdColumn() + " = ?";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, id);
-            try (ResultSet result = statement.executeQuery()) {
-                return result.next() ? result.getBytes("photo") : null;
-            }
-        }
-    }
-
-    private void bind(PreparedStatement statement, Map<Field, Object> values) throws SQLException {
-        int index = 1;
-        for (Object value : values.values()) {
-            statement.setObject(index++, value);
-        }
+        return crudDAO.findPhoto(definition, id);
     }
 
     private void deleteSelected() {
@@ -701,16 +612,11 @@ public class CrudPanel extends JPanel {
         }
         int row = table.convertRowIndexToModel(viewRow);
         Object id = tableModel.getValueAt(row, 0);
-        String sql = "DELETE FROM " + definition.getTableName() + " WHERE " + definition.getIdColumn() + " = ?";
         table.setEnabled(false);
         new javax.swing.SwingWorker<Integer, Void>() {
             @Override
             protected Integer doInBackground() throws SQLException {
-                try (Connection connection = DatabaseConnection.getConnection();
-                     PreparedStatement statement = connection.prepareStatement(sql)) {
-                    statement.setObject(1, id);
-                    return statement.executeUpdate();
-                }
+                return crudDAO.delete(definition, id);
             }
 
             @Override
@@ -770,18 +676,6 @@ public class CrudPanel extends JPanel {
         }
         JOptionPane.showMessageDialog(this, action + ":\n" + details,
                 "Lỗi", JOptionPane.ERROR_MESSAGE);
-    }
-
-    private static final class LookupSpec {
-        private final String tableName;
-        private final String idColumn;
-        private final String labelColumn;
-
-        private LookupSpec(String tableName, String idColumn, String labelColumn) {
-            this.tableName = tableName;
-            this.idColumn = idColumn;
-            this.labelColumn = labelColumn;
-        }
     }
 
     private static final class ComboOption {

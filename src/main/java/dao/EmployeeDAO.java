@@ -5,6 +5,7 @@
 package dao;
 
 import config.DatabaseConnection;
+import model.Branch;
 import model.Employee;
 
 import java.sql.Connection;
@@ -22,7 +23,7 @@ public class EmployeeDAO {
      * @return Đối tượng Employee nếu đúng thông tin, ngược lại trả về null
      */
     public Employee login(String username, String password) throws SQLException {
-        String sql = "SELECT employee_id, branch_id, full_name, role, username, password "
+        String sql = "SELECT employee_id, branch_id, full_name, role, username, password, account_status "
                 + "FROM Employee WHERE LTRIM(RTRIM(username)) = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -33,6 +34,7 @@ public class EmployeeDAO {
             String role;
             String actualUsername;
             String storedPassword;
+            String accountStatus;
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) {
                     return null;
@@ -43,9 +45,16 @@ public class EmployeeDAO {
                 role = rs.getString("role");
                 actualUsername = rs.getString("username");
                 storedPassword = rs.getString("password");
+                accountStatus = rs.getString("account_status");
             }
             if (!PasswordUtil.verify(password, storedPassword)) {
                 return null;
+            }
+            if (!"Active".equalsIgnoreCase(accountStatus)) {
+                if ("Pending".equalsIgnoreCase(accountStatus)) {
+                    throw new SQLException("Tài khoản đang chờ Admin phê duyệt.");
+                }
+                throw new SQLException("Tài khoản chưa được kích hoạt. Vui lòng liên hệ Admin.");
             }
             if (!PasswordUtil.isHashed(storedPassword)) {
                 try (PreparedStatement update = conn.prepareStatement(
@@ -55,7 +64,61 @@ public class EmployeeDAO {
                     update.executeUpdate();
                 }
             }
-            return new Employee(employeeId, branchId, fullName, role, actualUsername, "");
+            return new Employee(employeeId, branchId, fullName, role, actualUsername, "", accountStatus);
+        } catch (SQLException e) {
+            throw explainMissingApprovalColumn(e);
         }
+    }
+
+    public java.util.List<Branch> findBranches() throws SQLException {
+        String sql = "SELECT branch_id, name, address, phone FROM Branch ORDER BY name";
+        java.util.List<Branch> branches = new java.util.ArrayList<>();
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet results = statement.executeQuery()) {
+            while (results.next()) {
+                branches.add(new Branch(results.getInt("branch_id"), results.getString("name"),
+                        results.getString("address"), results.getString("phone")));
+            }
+        }
+        return branches;
+    }
+
+    public void register(String fullName, String username, String password, int branchId) throws SQLException {
+        if (fullName == null || fullName.isBlank() || fullName.length() > 100
+                || username == null || !username.matches("[A-Za-z0-9._-]{4,50}")
+                || password == null || password.length() < 8 || branchId <= 0) {
+            throw new IllegalArgumentException("Thông tin đăng ký không hợp lệ.");
+        }
+        String sql = "INSERT INTO Employee (branch_id, full_name, role, username, password, account_status) "
+                + "VALUES (?, ?, N'NhanVien', ?, ?, N'Pending')";
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, branchId);
+            statement.setNString(2, fullName.trim());
+            statement.setString(3, username.trim());
+            statement.setString(4, PasswordUtil.hash(password));
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            if (e.getErrorCode() == 2601 || e.getErrorCode() == 2627) {
+                throw new SQLException("Tên đăng nhập đã được sử dụng. Hãy chọn tên khác.", e);
+            }
+            throw explainMissingApprovalColumn(e);
+        }
+    }
+
+    private SQLException explainMissingApprovalColumn(SQLException exception) {
+        for (SQLException cause = exception; cause != null; cause = cause.getNextException()) {
+            String message = cause.getMessage();
+            if (cause.getErrorCode() == 207
+                    || (message != null && message.toLowerCase(java.util.Locale.ROOT)
+                            .contains("invalid column name 'account_status'"))) {
+                return new SQLException("Database chưa được cập nhật cho chức năng đăng ký. "
+                        + "Hãy mở account_approval.sql trong thư mục dự án, chọn cơ sở dữ liệu PetClinicDB "
+                        + "trong SQL Server Management Studio và thực thi script, sau đó khởi động lại ứng dụng.",
+                        exception);
+            }
+        }
+        return exception;
     }
 }

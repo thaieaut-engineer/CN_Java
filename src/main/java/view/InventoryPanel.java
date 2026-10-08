@@ -1,7 +1,9 @@
 package view;
 
-import config.DatabaseConnection;
+import dao.InventoryDAO;
 import model.Employee;
+import model.InventoryMovement;
+import model.StockOption;
 import util.ExcelExporter;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -12,11 +14,7 @@ import java.awt.Insets;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,6 +33,7 @@ import javax.swing.table.DefaultTableModel;
 
 public class InventoryPanel extends JPanel {
     private final Employee employee;
+    private final InventoryDAO inventoryDAO = new InventoryDAO();
     private final DefaultTableModel model = new DefaultTableModel(
             new String[]{"Loại", "Ngày", "Mã thuốc/dịch vụ", "Tên", "Số lượng", "Đơn giá nhập", "Nhân viên", "Ghi chú"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -94,15 +93,8 @@ public class InventoryPanel extends JPanel {
     private void openMovementDialog(boolean incoming) {
         JComboBox<StockOption> service = new JComboBox<>();
         service.addItem(new StockOption(0, "— Chọn thuốc / vắc-xin —", 0));
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT service_id, name, stock_quantity FROM Service "
-                             + "WHERE type IN (N'Thuoc', N'TiemPhong') ORDER BY name");
-             ResultSet results = statement.executeQuery()) {
-            while (results.next()) {
-                service.addItem(new StockOption(results.getInt("service_id"),
-                        results.getString("name"), results.getInt("stock_quantity")));
-            }
+        try {
+            inventoryDAO.findStockOptions().forEach(service::addItem);
         } catch (SQLException e) {
             showError(e);
             return;
@@ -139,7 +131,7 @@ public class InventoryPanel extends JPanel {
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
         if (result == JOptionPane.OK_OPTION) {
             StockOption selected = (StockOption) service.getSelectedItem();
-            record(incoming, selected == null ? null : selected.serviceId, quantity.getText(),
+            record(incoming, selected == null ? null : selected.getServiceId(), quantity.getText(),
                     unitPrice.getText(), notes.getText());
         }
     }
@@ -171,8 +163,11 @@ public class InventoryPanel extends JPanel {
             new javax.swing.SwingWorker<Void, Void>() {
                 @Override
                 protected Void doInBackground() throws SQLException {
-                    if (incoming) receiveStock(serviceId, amount, price);
-                    else issueStock(serviceId, amount, notesText.trim());
+                    if (incoming) {
+                        inventoryDAO.receive(serviceId, employee.getEmployeeId(), amount, price);
+                    } else {
+                        inventoryDAO.issue(serviceId, employee.getEmployeeId(), amount, notesText.trim());
+                    }
                     return null;
                 }
 
@@ -200,91 +195,13 @@ public class InventoryPanel extends JPanel {
         }
     }
 
-    private void receiveStock(int serviceId, int amount, BigDecimal price) throws SQLException {
-        String updateSql = "UPDATE Service SET stock_quantity = ISNULL(stock_quantity, 0) + ? "
-                + "WHERE service_id = ? AND type IN (N'Thuoc', N'TiemPhong')";
-        String insertSql = "INSERT INTO InventoryReceipt (service_id, employee_id, quantity, import_price) "
-                + "VALUES (?, ?, ?, ?)";
-        inTransaction(connection -> {
-            try (PreparedStatement update = connection.prepareStatement(updateSql)) {
-                update.setInt(1, amount);
-                update.setInt(2, serviceId);
-                if (update.executeUpdate() != 1) {
-                    throw new SQLException("Không tìm thấy thuốc/vắc-xin có mã " + serviceId + ".");
-                }
-            }
-            try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
-                insert.setInt(1, serviceId);
-                insert.setInt(2, employee.getEmployeeId());
-                insert.setInt(3, amount);
-                insert.setBigDecimal(4, price);
-                insert.executeUpdate();
-            }
-        });
-    }
-
-    private void issueStock(int serviceId, int amount, String reason) throws SQLException {
-        String updateSql = "UPDATE Service SET stock_quantity = stock_quantity - ? "
-                + "WHERE service_id = ? AND type IN (N'Thuoc', N'TiemPhong') AND stock_quantity >= ?";
-        String insertSql = "INSERT INTO InventoryIssue (service_id, employee_id, quantity, notes) VALUES (?, ?, ?, ?)";
-        inTransaction(connection -> {
-            try (PreparedStatement update = connection.prepareStatement(updateSql)) {
-                update.setInt(1, amount);
-                update.setInt(2, serviceId);
-                update.setInt(3, amount);
-                if (update.executeUpdate() != 1) {
-                    throw new SQLException("Không đủ tồn kho hoặc mã thuốc/vắc-xin không hợp lệ.");
-                }
-            }
-            try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
-                insert.setInt(1, serviceId);
-                insert.setInt(2, employee.getEmployeeId());
-                insert.setInt(3, amount);
-                insert.setNString(4, reason);
-                insert.executeUpdate();
-            }
-        });
-    }
-
-    private void inTransaction(SqlWork work) throws SQLException {
-        try (Connection connection = DatabaseConnection.getConnection()) {
-            connection.setAutoCommit(false);
-            try {
-                work.execute(connection);
-                connection.commit();
-            } catch (SQLException e) {
-                connection.rollback();
-                throw e;
-            }
-        }
-    }
-
     private void loadData() {
-        String sql = "SELECT movement_type, movement_date, service_id, service_name, quantity, unit_price, "
-                + "employee_name, notes FROM ("
-                + "SELECT N'Nhập' AS movement_type, r.import_date AS movement_date, s.service_id, s.name AS service_name, "
-                + "r.quantity, r.import_price AS unit_price, e.full_name AS employee_name, N'' AS notes "
-                + "FROM InventoryReceipt r JOIN Service s ON s.service_id=r.service_id JOIN Employee e ON e.employee_id=r.employee_id "
-                + "UNION ALL SELECT N'Xuất', i.issue_date, s.service_id, s.name, i.quantity, NULL, e.full_name, i.notes "
-                + "FROM InventoryIssue i JOIN Service s ON s.service_id=i.service_id JOIN Employee e ON e.employee_id=i.employee_id"
-                + ") movements ORDER BY movement_date DESC";
         long version = loadVersion.incrementAndGet();
         status.setText("Đang tải giao dịch kho...");
-        new javax.swing.SwingWorker<List<Object[]>, Void>() {
+        new javax.swing.SwingWorker<List<InventoryMovement>, Void>() {
             @Override
-            protected List<Object[]> doInBackground() throws SQLException {
-                List<Object[]> rows = new ArrayList<>();
-                try (Connection connection = DatabaseConnection.getConnection();
-                     PreparedStatement statement = connection.prepareStatement(sql);
-                     ResultSet results = statement.executeQuery()) {
-                    while (results.next()) {
-                        rows.add(new Object[]{results.getString("movement_type"), results.getTimestamp("movement_date"),
-                            results.getInt("service_id"), results.getString("service_name"), results.getInt("quantity"),
-                            results.getBigDecimal("unit_price"), results.getString("employee_name"),
-                            results.getString("notes")});
-                    }
-                }
-                return rows;
+            protected List<InventoryMovement> doInBackground() throws SQLException {
+                return inventoryDAO.findMovements();
             }
 
             @Override
@@ -293,9 +210,12 @@ public class InventoryPanel extends JPanel {
                     return;
                 }
                 try {
-                    List<Object[]> rows = get();
+                    List<InventoryMovement> rows = get();
                     model.setRowCount(0);
-                    rows.forEach(model::addRow);
+                    rows.forEach(movement -> model.addRow(new Object[]{movement.getMovementType(),
+                        movement.getMovementDate(), movement.getServiceId(), movement.getServiceName(),
+                        movement.getQuantity(), movement.getUnitPrice(), movement.getEmployeeName(),
+                        movement.getNotes()}));
                     status.setText(rows.size() + " giao dịch");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -327,25 +247,4 @@ public class InventoryPanel extends JPanel {
         JOptionPane.showMessageDialog(this, "Thao tác thất bại:\n" + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
     }
 
-    private static final class StockOption {
-        private final int serviceId;
-        private final String name;
-        private final int stock;
-
-        private StockOption(int serviceId, String name, int stock) {
-            this.serviceId = serviceId;
-            this.name = name;
-            this.stock = stock;
-        }
-
-        @Override
-        public String toString() {
-            return name + "  ·  Tồn kho: " + stock;
-        }
-    }
-
-    @FunctionalInterface
-    private interface SqlWork {
-        void execute(Connection connection) throws SQLException;
-    }
 }

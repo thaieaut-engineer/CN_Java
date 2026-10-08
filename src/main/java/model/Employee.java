@@ -11,16 +11,25 @@ public class Employee {
     private String role; // Admin, BacSi, NhanVien
     private String username;
     private String password;
+    private String accountStatus;
 
-    public Employee() {}
+    public Employee() {
+        this.accountStatus = "Active";
+    }
 
     public Employee(int employeeId, int branchId, String fullName, String role, String username, String password) {
+        this(employeeId, branchId, fullName, role, username, password, "Active");
+    }
+
+    public Employee(int employeeId, int branchId, String fullName, String role, String username,
+            String password, String accountStatus) {
         this.employeeId = employeeId;
         this.branchId = branchId;
         this.fullName = fullName;
         this.role = role;
         this.username = username;
         this.password = password;
+        this.accountStatus = accountStatus;
     }
 
     public int getEmployeeId() { return employeeId; }
@@ -40,4 +49,7 @@ public class Employee {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getAccountStatus() { return accountStatus; }
+    public void setAccountStatus(String accountStatus) { this.accountStatus = accountStatus; }
 }

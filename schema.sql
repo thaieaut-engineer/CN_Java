@@ -45,6 +45,9 @@ CREATE TABLE Employee (
     role NVARCHAR(50) NOT NULL, -- Admin, BacSi, NhanVien
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
+    account_status NVARCHAR(20) NOT NULL
+        CONSTRAINT DF_Employee_AccountStatus DEFAULT N'Active'
+        CONSTRAINT CK_Employee_AccountStatus CHECK (account_status IN (N'Pending', N'Active', N'Rejected')),
     photo VARBINARY(MAX) NULL,
     CONSTRAINT FK_Employee_Branch FOREIGN KEY (branch_id) 
         REFERENCES Branch(branch_id)

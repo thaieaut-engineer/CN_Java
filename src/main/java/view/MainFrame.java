@@ -70,7 +70,7 @@ public class MainFrame extends JFrame {
         markBox.setBackground(UiTheme.BLUE);
         markBox.setBorder(BorderFactory.createEmptyBorder(9, 9, 9, 9));
         markBox.add(mark);
-        JLabel name = new JLabel("PET CLINIC");
+        JLabel name = new JLabel("PHÒNG KHÁM");
         name.setFont(new Font("Segoe UI", Font.BOLD, 20));
         name.setForeground(Color.WHITE);
         JLabel subName = new JLabel("CHĂM SÓC THÚ CƯNG");
@@ -110,7 +110,7 @@ public class MainFrame extends JFrame {
         menuContainer.setLayout(new BoxLayout(menuContainer, BoxLayout.Y_AXIS));
         menuContainer.setBackground(UiTheme.NAV);
         menuContainer.setBorder(BorderFactory.createEmptyBorder(8, 10, 12, 10));
-        addMenu("Dashboard", "DASHBOARD", () -> new DashboardPanel(currentEmployee), Set.of("admin"));
+        addMenu("Tổng quan", "DASHBOARD", () -> new DashboardPanel(currentEmployee), Set.of("admin"));
         addMenu("Chi nhánh", "BRANCH", createBranchDefinition(), Set.of("admin"));
         addMenu("Nhân viên & tài khoản", "EMPLOYEE", createEmployeeDefinition(), Set.of("admin"));
         addMenu("Khách hàng", "CUSTOMER", createCustomerDefinition(), Set.of("admin", "bác sĩ", "bacsi", "nhân viên", "nhanvien"));
@@ -249,9 +249,11 @@ public class MainFrame extends JFrame {
         return definition("Quản lý nhân viên & tài khoản", "Employee", "employee_id",
                 fields(integer("branch_id", "Chi nhánh", true), text("full_name", "Họ tên", true),
                         text("role", "Vai trò", true), text("username", "Tên đăng nhập", true),
+                        text("account_status", "Trạng thái tài khoản", true),
                         new Field("password", "Mật khẩu (để trống khi giữ nguyên)", ValueType.PASSWORD, true)),
                 columns(col("employee_id", "Mã"), col("branch_id", "Chi nhánh"), col("full_name", "Họ tên"),
-                        col("role", "Vai trò"), col("username", "Tài khoản")));
+                        col("role", "Vai trò"), col("username", "Tài khoản"),
+                        col("account_status", "Trạng thái")));
     }
 
     private ModuleDefinition createCustomerDefinition() {

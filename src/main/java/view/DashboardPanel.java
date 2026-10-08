@@ -1,6 +1,7 @@
 package view;
 
-import config.DatabaseConnection;
+import dao.DashboardDAO;
+import model.DashboardData;
 import model.Employee;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -13,9 +14,6 @@ import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.awt.GradientPaint;
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +29,7 @@ import javax.swing.table.DefaultTableModel;
 
 public class DashboardPanel extends JPanel {
     private final Employee employee;
+    private final DashboardDAO dashboardDAO = new DashboardDAO();
     private final JLabel branchesValue = new JLabel("—");
     private final JLabel employeesValue = new JLabel("—");
     private final JLabel customersValue = new JLabel("—");
@@ -161,7 +160,7 @@ public class DashboardPanel extends JPanel {
         new SwingWorker<DashboardData, Void>() {
             @Override
             protected DashboardData doInBackground() throws Exception {
-                return queryDashboard();
+                return dashboardDAO.loadDashboard();
             }
 
             @Override
@@ -169,19 +168,20 @@ public class DashboardPanel extends JPanel {
                 setCursor(java.awt.Cursor.getDefaultCursor());
                 try {
                     DashboardData data = get();
-                    branchesValue.setText(formatCount(data.branches));
-                    employeesValue.setText(formatCount(data.employees));
-                    customersValue.setText(formatCount(data.customers));
-                    petsValue.setText(formatCount(data.pets));
-                    appointmentsValue.setText(formatCount(data.todayAppointments));
-                    revenueValue.setText(formatMoney(data.monthRevenue));
-                    unpaidValue.setText(formatMoney(data.unpaidAmount));
-                    lowStockValue.setText(formatCount(data.lowStock));
+                    branchesValue.setText(formatCount(data.getBranches()));
+                    employeesValue.setText(formatCount(data.getEmployees()));
+                    customersValue.setText(formatCount(data.getCustomers()));
+                    petsValue.setText(formatCount(data.getPets()));
+                    appointmentsValue.setText(formatCount(data.getTodayAppointments()));
+                    revenueValue.setText(formatMoney(data.getMonthRevenue()));
+                    unpaidValue.setText(formatMoney(data.getUnpaidAmount()));
+                    lowStockValue.setText(formatCount(data.getLowStock()));
                     appointmentModel.setRowCount(0);
-                    for (Object[] row : data.appointments) {
-                        appointmentModel.addRow(row);
+                    for (model.AppointmentSummary appointment : data.getAppointments()) {
+                        appointmentModel.addRow(new Object[]{appointment.getAppointmentDate(), appointment.getPetName(),
+                            appointment.getCustomerName(), appointment.getBranchName(), appointment.getStatus()});
                     }
-                    revenueChart.setData(data.monthLabels, data.monthRevenues);
+                    revenueChart.setData(data.getMonthLabels(), data.getMonthRevenues());
                     status.setText("Cập nhật lúc " + java.time.LocalTime.now().withNano(0));
                 } catch (Exception e) {
                     Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -192,86 +192,6 @@ public class DashboardPanel extends JPanel {
                 }
             }
         }.execute();
-    }
-
-    private DashboardData queryDashboard() throws SQLException {
-        DashboardData data = new DashboardData();
-        String metricsSql = "SELECT "
-                + "(SELECT COUNT(*) FROM Branch) AS branches, "
-                + "(SELECT COUNT(*) FROM Employee) AS employees, "
-                + "(SELECT COUNT(*) FROM Customer) AS customers, "
-                + "(SELECT COUNT(*) FROM Pet) AS pets, "
-                + "(SELECT COUNT(*) FROM Appointment WHERE appointment_date >= CONVERT(date,GETDATE()) "
-                + "AND appointment_date < DATEADD(day,1,CONVERT(date,GETDATE())) "
-                + "AND status <> N'Cancelled') AS today_appointments, "
-                + "(SELECT COALESCE(SUM(total_amount),0) FROM Invoice WHERE status=N'Paid' "
-                + "AND created_date >= DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1) "
-                + "AND created_date < DATEADD(month,1,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1))) AS month_revenue, "
-                + "(SELECT COALESCE(SUM(total_amount),0) FROM Invoice WHERE status=N'Unpaid') AS unpaid_amount, "
-                + "(SELECT COUNT(*) FROM Service WHERE type IN (N'Thuoc',N'TiemPhong') "
-                + "AND COALESCE(stock_quantity,0) <= 5) AS low_stock";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(metricsSql);
-             ResultSet result = statement.executeQuery()) {
-            if (result.next()) {
-                data.branches = result.getLong("branches");
-                data.employees = result.getLong("employees");
-                data.customers = result.getLong("customers");
-                data.pets = result.getLong("pets");
-                data.todayAppointments = result.getLong("today_appointments");
-                data.monthRevenue = result.getBigDecimal("month_revenue");
-                data.unpaidAmount = result.getBigDecimal("unpaid_amount");
-                data.lowStock = result.getLong("low_stock");
-            }
-            loadAppointments(connection, data);
-            loadMonthlyRevenue(connection, data);
-        }
-        return data;
-    }
-
-    private void loadAppointments(Connection connection, DashboardData data) throws SQLException {
-        String sql = "SELECT TOP 8 a.appointment_date,p.name AS pet_name,c.full_name AS customer_name,"
-                + "b.name AS branch_name,a.status FROM Appointment a "
-                + "JOIN Pet p ON p.pet_id=a.pet_id JOIN Customer c ON c.customer_id=a.customer_id "
-                + "JOIN Branch b ON b.branch_id=a.branch_id "
-                + "WHERE a.appointment_date >= CONVERT(date,GETDATE()) AND a.status IN (N'Pending',N'Confirmed') "
-                + "ORDER BY a.appointment_date";
-        try (PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet results = statement.executeQuery()) {
-            while (results.next()) {
-                data.appointments.add(new Object[]{
-                    results.getTimestamp("appointment_date"), results.getString("pet_name"),
-                    results.getString("customer_name"), results.getString("branch_name"),
-                    results.getString("status")
-                });
-            }
-        }
-    }
-
-    private void loadMonthlyRevenue(Connection connection, DashboardData data) throws SQLException {
-        String sql = "SELECT DATEFROMPARTS(YEAR(created_date),MONTH(created_date),1) AS revenue_month,"
-                + "COALESCE(SUM(total_amount),0) AS revenue FROM Invoice "
-                + "WHERE status=N'Paid' AND created_date >= DATEADD(month,-5,"
-                + "DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1)) "
-                + "AND created_date < DATEADD(month,1,DATEFROMPARTS(YEAR(GETDATE()),MONTH(GETDATE()),1)) "
-                + "GROUP BY DATEFROMPARTS(YEAR(created_date),MONTH(created_date),1) ORDER BY revenue_month";
-        java.time.YearMonth firstMonth = java.time.YearMonth.now().minusMonths(5);
-        for (int month = 0; month < 6; month++) {
-            java.time.YearMonth current = firstMonth.plusMonths(month);
-            data.monthLabels.add(current.toString());
-            data.monthRevenues.add(BigDecimal.ZERO);
-        }
-        try (PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet results = statement.executeQuery()) {
-            while (results.next()) {
-                java.sql.Date date = results.getDate("revenue_month");
-                java.time.YearMonth month = java.time.YearMonth.from(date.toLocalDate());
-                int index = (int) java.time.temporal.ChronoUnit.MONTHS.between(firstMonth, month);
-                if (index >= 0 && index < data.monthRevenues.size()) {
-                    data.monthRevenues.set(index, results.getBigDecimal("revenue"));
-                }
-            }
-        }
     }
 
     private String formatCount(long value) {
@@ -301,20 +221,6 @@ public class DashboardPanel extends JPanel {
             g.dispose();
             super.paintComponent(graphics);
         }
-    }
-
-    private static final class DashboardData {
-        private long branches;
-        private long employees;
-        private long customers;
-        private long pets;
-        private long todayAppointments;
-        private long lowStock;
-        private BigDecimal monthRevenue = BigDecimal.ZERO;
-        private BigDecimal unpaidAmount = BigDecimal.ZERO;
-        private final List<Object[]> appointments = new ArrayList<>();
-        private final List<String> monthLabels = new ArrayList<>();
-        private final List<BigDecimal> monthRevenues = new ArrayList<>();
     }
 
     private static final class RevenueChart extends JPanel {

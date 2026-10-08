@@ -1,7 +1,11 @@
 package view;
 
-import config.DatabaseConnection;
+import dao.InvoiceDAO;
 import model.Employee;
+import model.InvoiceLine;
+import model.InvoicePrintData;
+import model.InvoiceRecordOption;
+import model.InvoiceSummary;
 import util.ExcelExporter;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -11,11 +15,7 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -32,6 +32,7 @@ import javax.swing.JTextArea;
 import javax.swing.table.DefaultTableModel;
 
 public class InvoicePanel extends JPanel {
+    private final InvoiceDAO invoiceDAO = new InvoiceDAO();
     private final DefaultTableModel model = new DefaultTableModel(new String[]{
         "Mã HĐ", "Mã phiếu khám", "Thú cưng", "Khách hàng", "Chi nhánh", "Ngày tạo", "Tổng tiền", "Trạng thái", "Thanh toán"
     }, 0) {
@@ -96,18 +97,9 @@ public class InvoicePanel extends JPanel {
     private void openCreateDialog() {
         JComboBox<InvoiceRecordOption> record = new JComboBox<>();
         record.addItem(new InvoiceRecordOption(0, "— Chọn phiếu khám —", null));
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT r.record_id, p.name AS pet_name, "
-                             + "CONVERT(varchar(16), r.visit_date, 120) AS visit_time "
-                             + "FROM MedicalRecord r JOIN Pet p ON p.pet_id = r.pet_id "
-                             + "WHERE EXISTS (SELECT 1 FROM MedicalDetail d WHERE d.record_id = r.record_id) "
-                             + "AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.record_id = r.record_id) "
-                             + "ORDER BY r.visit_date DESC");
-             ResultSet results = statement.executeQuery()) {
-            while (results.next()) {
-                record.addItem(new InvoiceRecordOption(results.getInt("record_id"),
-                        results.getString("pet_name"), results.getString("visit_time")));
+        try {
+            for (InvoiceRecordOption option : invoiceDAO.findInvoiceCandidates()) {
+                record.addItem(option);
             }
         } catch (SQLException e) {
             showError(e);
@@ -148,29 +140,17 @@ public class InvoicePanel extends JPanel {
         if (JOptionPane.showConfirmDialog(this, form, "Tạo hóa đơn",
                 JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
             InvoiceRecordOption selected = (InvoiceRecordOption) record.getSelectedItem();
-            if (selected == null || selected.recordId <= 0) {
+            if (selected == null || selected.getRecordId() <= 0) {
                 JOptionPane.showMessageDialog(this, "Không có phiếu khám đủ điều kiện để lập hóa đơn.");
                 return;
             }
-            createInvoice(selected.recordId, paymentMethod.getSelectedItem().toString());
+            createInvoice(selected.getRecordId(), paymentMethod.getSelectedItem().toString());
         }
     }
 
     private void createInvoice(int id, String paymentMethod) {
         try {
-            String sql = "INSERT INTO Invoice (record_id, total_amount, status, payment_method) "
-                    + "SELECT ?, COALESCE(SUM(d.quantity * d.unit_price), 0), N'Unpaid', ? "
-                    + "FROM MedicalDetail d WHERE d.record_id = ? "
-                    + "AND NOT EXISTS (SELECT 1 FROM Invoice i WHERE i.record_id = ?)";
-            try (Connection connection = DatabaseConnection.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setInt(1, id);
-                statement.setNString(2, paymentMethod.trim());
-                statement.setInt(3, id);
-                statement.setInt(4, id);
-                int changed = statement.executeUpdate();
-                if (changed == 0) throw new SQLException("Không tìm thấy phiếu khám, phiếu chưa có chi tiết hoặc đã có hóa đơn.");
-            }
+            invoiceDAO.createInvoice(id, paymentMethod.trim());
             loadData();
             JOptionPane.showMessageDialog(this, "Đã tạo hóa đơn ở trạng thái chưa thanh toán.");
         } catch (SQLException e) {
@@ -190,12 +170,8 @@ public class InvoicePanel extends JPanel {
                 "Xác nhận thanh toán", JOptionPane.QUESTION_MESSAGE, null, methods,
                 java.util.Arrays.asList(methods).contains(currentMethod) ? currentMethod : methods[0]);
         if (method == null) return;
-        String sql = "UPDATE Invoice SET status=N'Paid', payment_method=? WHERE invoice_id=?";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setNString(1, method.toString());
-            statement.setObject(2, model.getValueAt(row, 0));
-            if (statement.executeUpdate() != 1) throw new SQLException("Không tìm thấy hóa đơn.");
+        try {
+            invoiceDAO.markPaid(Integer.parseInt(model.getValueAt(row, 0).toString()), method.toString());
             loadData();
         } catch (SQLException e) {
             showError(e);
@@ -209,42 +185,28 @@ public class InvoicePanel extends JPanel {
             return;
         }
         int invoiceId = Integer.parseInt(model.getValueAt(row, 0).toString());
-        String sql = "SELECT i.invoice_id,i.created_date,i.total_amount,i.status,i.payment_method,c.full_name,c.phone,"
-                + "p.name AS pet_name,b.name AS branch_name,e.full_name AS doctor,d.quantity,d.unit_price,s.name AS item_name "
-                + "FROM Invoice i JOIN MedicalRecord mr ON mr.record_id=i.record_id "
-                + "JOIN Pet p ON p.pet_id=mr.pet_id JOIN Customer c ON c.customer_id=p.customer_id "
-                + "JOIN Branch b ON b.branch_id=mr.branch_id JOIN Employee e ON e.employee_id=mr.employee_id "
-                + "LEFT JOIN MedicalDetail d ON d.record_id=mr.record_id LEFT JOIN Service s ON s.service_id=d.service_id "
-                + "WHERE i.invoice_id=? ORDER BY d.detail_id";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, invoiceId);
-            try (ResultSet results = statement.executeQuery()) {
-                if (!results.next()) throw new SQLException("Không tìm thấy hóa đơn.");
-                StringBuilder receipt = new StringBuilder("PHÒNG KHÁM THÚ Y PET CLINIC\n")
-                        .append("Chi nhánh: ").append(results.getString("branch_name")).append('\n')
-                        .append("HÓA ĐƠN #").append(invoiceId).append('\n')
-                        .append("Ngày: ").append(results.getTimestamp("created_date")).append('\n')
-                        .append("Khách hàng: ").append(results.getString("full_name"))
-                        .append(" - ").append(results.getString("phone")).append('\n')
-                        .append("Thú cưng: ").append(results.getString("pet_name"))
-                        .append(" | Bác sĩ: ").append(results.getString("doctor")).append("\n\n")
-                        .append(String.format("%-32s %5s %14s%n", "Dịch vụ/thuốc", "SL", "Thành tiền"));
-                do {
-                    String item = results.getString("item_name");
-                    if (item != null) {
-                        receipt.append(String.format("%-32s %5d %14s%n", item, results.getInt("quantity"),
-                                results.getBigDecimal("unit_price").multiply(java.math.BigDecimal.valueOf(results.getInt("quantity")))));
-                    }
-                } while (results.next());
-                receipt.append("\nTổng cộng: ").append(model.getValueAt(row, 6))
-                        .append("\nTrạng thái: ").append(model.getValueAt(row, 7))
-                        .append("\nPhương thức: ").append(model.getValueAt(row, 8))
-                        .append("\n\nCảm ơn quý khách!");
-                JTextArea printable = new JTextArea(receipt.toString());
-                printable.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
-                printable.print();
+        try {
+            InvoicePrintData data = invoiceDAO.findPrintData(invoiceId);
+            StringBuilder receipt = new StringBuilder("PHÒNG KHÁM THÚ Y PET CLINIC\n")
+                    .append("Chi nhánh: ").append(data.getBranchName()).append('\n')
+                    .append("HÓA ĐƠN #").append(data.getInvoiceId()).append('\n')
+                    .append("Ngày: ").append(data.getCreatedDate()).append('\n')
+                    .append("Khách hàng: ").append(data.getCustomerName())
+                    .append(" - ").append(data.getPhone()).append('\n')
+                    .append("Thú cưng: ").append(data.getPetName())
+                    .append(" | Bác sĩ: ").append(data.getDoctor()).append("\n\n")
+                    .append(String.format("%-32s %5s %14s%n", "Dịch vụ/thuốc", "SL", "Thành tiền"));
+            for (InvoiceLine line : data.getLines()) {
+                receipt.append(String.format("%-32s %5d %14s%n", line.getName(), line.getQuantity(),
+                        line.getUnitPrice().multiply(java.math.BigDecimal.valueOf(line.getQuantity()))));
             }
+            receipt.append("\nTổng cộng: ").append(data.getTotalAmount())
+                    .append("\nTrạng thái: ").append(data.getStatus())
+                    .append("\nPhương thức: ").append(data.getPaymentMethod())
+                    .append("\n\nCảm ơn quý khách!");
+            JTextArea printable = new JTextArea(receipt.toString());
+            printable.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
+            printable.print();
         } catch (SQLException | java.awt.print.PrinterException e) {
             showError(e);
         }
@@ -256,29 +218,12 @@ public class InvoicePanel extends JPanel {
     }
 
     private void loadData() {
-        String sql = "SELECT i.invoice_id,i.record_id,p.name AS pet_name,c.full_name AS customer_name,b.name AS branch_name,"
-                + "i.created_date,i.total_amount,i.status,i.payment_method FROM Invoice i "
-                + "JOIN MedicalRecord mr ON mr.record_id=i.record_id JOIN Pet p ON p.pet_id=mr.pet_id "
-                + "JOIN Customer c ON c.customer_id=p.customer_id JOIN Branch b ON b.branch_id=mr.branch_id "
-                + "ORDER BY i.created_date DESC";
         long version = loadVersion.incrementAndGet();
         status.setText("Đang tải hóa đơn...");
-        new javax.swing.SwingWorker<List<Object[]>, Void>() {
+        new javax.swing.SwingWorker<List<InvoiceSummary>, Void>() {
             @Override
-            protected List<Object[]> doInBackground() throws SQLException {
-                List<Object[]> rows = new ArrayList<>();
-                try (Connection connection = DatabaseConnection.getConnection();
-                     PreparedStatement statement = connection.prepareStatement(sql);
-                     ResultSet results = statement.executeQuery()) {
-                    while (results.next()) {
-                        rows.add(new Object[]{results.getInt("invoice_id"), results.getInt("record_id"),
-                            results.getString("pet_name"), results.getString("customer_name"),
-                            results.getString("branch_name"), results.getTimestamp("created_date"),
-                            results.getBigDecimal("total_amount"), results.getString("status"),
-                            results.getString("payment_method")});
-                    }
-                }
-                return rows;
+            protected List<InvoiceSummary> doInBackground() throws SQLException {
+                return invoiceDAO.findInvoices();
             }
 
             @Override
@@ -287,9 +232,12 @@ public class InvoicePanel extends JPanel {
                     return;
                 }
                 try {
-                    List<Object[]> rows = get();
+                    List<InvoiceSummary> rows = get();
                     model.setRowCount(0);
-                    rows.forEach(model::addRow);
+                    rows.forEach(invoice -> model.addRow(new Object[]{invoice.getInvoiceId(),
+                        invoice.getRecordId(), invoice.getPetName(), invoice.getCustomerName(),
+                        invoice.getBranchName(), invoice.getCreatedDate(), invoice.getTotalAmount(),
+                        invoice.getStatus(), invoice.getPaymentMethod()}));
                     status.setText(rows.size() + " hóa đơn");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -322,21 +270,4 @@ public class InvoicePanel extends JPanel {
         JOptionPane.showMessageDialog(this, "Thao tác thất bại:\n" + e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
     }
 
-    private static final class InvoiceRecordOption {
-        private final int recordId;
-        private final String petName;
-        private final String visitTime;
-
-        private InvoiceRecordOption(int recordId, String petName, String visitTime) {
-            this.recordId = recordId;
-            this.petName = petName;
-            this.visitTime = visitTime;
-        }
-
-        @Override
-        public String toString() {
-            String date = visitTime == null ? "Chưa có ngày khám" : visitTime;
-            return "#" + recordId + "  ·  " + petName + "  ·  " + date;
-        }
-    }
 }

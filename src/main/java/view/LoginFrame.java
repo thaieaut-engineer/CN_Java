@@ -91,19 +91,25 @@ public class LoginFrame extends JFrame {
         buttonPanel.setOpaque(false);
         btnLogin = new JButton("Đăng nhập");
         btnCancel = new JButton("Thoát");
+        JButton btnRegister = new JButton("Đăng ký nhân viên");
         UiTheme.stylePrimary(btnLogin);
         UiTheme.styleSecondary(btnCancel);
+        UiTheme.styleSecondary(btnRegister);
         btnLogin.setIcon(new ClinicIcon("employee", Color.WHITE, 17));
         buttonPanel.add(btnLogin);
         buttonPanel.add(btnCancel);
         constraints.gridy = 7;
         constraints.insets = new Insets(0, 0, 0, 0);
         formPanel.add(buttonPanel, constraints);
+        constraints.gridy = 8;
+        constraints.insets = new Insets(12, 0, 0, 0);
+        formPanel.add(btnRegister, constraints);
         mainPanel.add(formPanel, BorderLayout.CENTER);
         add(mainPanel);
 
         btnLogin.addActionListener(e -> handleLogin());
         btnCancel.addActionListener(e -> System.exit(0));
+        btnRegister.addActionListener(e -> new RegisterDialog(this, employeeDAO).setVisible(true));
         getRootPane().setDefaultButton(btnLogin);
     }
 
@@ -157,9 +163,9 @@ public class LoginFrame extends JFrame {
 
     private void handleLogin() {
     String username = txtUsername.getText().trim();
-    String password = new String(txtPassword.getPassword()).trim();
+    String password = new String(txtPassword.getPassword());
 
-    if (username.isEmpty() || password.isEmpty()) {
+    if (username.isEmpty() || password.isBlank()) {
         JOptionPane.showMessageDialog(this, "Vui lòng nhập đầy đủ Tên đăng nhập và Mật khẩu!", 
                 "Cảnh báo", JOptionPane.WARNING_MESSAGE);
         return;
